@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>透明背景探针</title>
+<style>
+  /* 关键：整个文档都不画底色，透明截图才该带 alpha 通道 */
+  html, body { margin: 0; background: transparent; }
+  body { font: 16px/1.7 "Noto Sans CJK SC", sans-serif; color: #1f2233; }
+  #tile { width: 240px; height: 120px; margin: 40px; border-radius: 16px;
+    background: radial-gradient(circle at 30% 30%, #4c6ef5, #f76707); }
+  #ring { width: 180px; height: 180px; margin: 0 40px; border: 10px solid #0ca678;
+    border-radius: 50%; }
+</style>
+</head>
+<body>
+  <div id="tile"></div>
+  <div id="ring"></div>
+</body>
+</html>

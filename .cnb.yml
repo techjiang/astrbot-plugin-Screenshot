@@ -1,10 +1,59 @@
+# 运行环境：Python 由镜像提供。
+# 默认构建镜像只有 node，既没有 python、也没有 python3
+# （实测 `python3 -m compileall` → `sh: python3: command not found`，127），
+# 所以这里必须显式给一个带 Python 的镜像。
+# 用 bookworm 变体：trixie 的 python:3.11-slim 要 GLIBC_2.38，跟 runner 宿主
+# 对不上，运行时会直接挂；bookworm 变体可正常执行。仓库已有 3.11 语法
+# （`X | Y` 类型标注），所以固定 3.11 而不是 3.12。
+#
+# 依赖情况：
+#   - tests/test_parse.py 经 core.image 间接 import PIL，需要 requirements.txt
+#   - tests/test_metadata.py 的 Logo 渲染侧断言要读 PNG 像素（Pillow）
+#   - tests/test_docs.py 纯静态、零依赖
+# 需要依赖的 Stage 都在同一个脚本里「先装依赖、再跑检查」。
+#
+# 注意：tests/test_parse.py 的设计目标是「不依赖 AstrBot / 浏览器」。
+# 一旦有人为了测某个纯函数直接 `from core.session import ...`，就会把
+# astrbot / aiohttp 一起拖进来，这个 Stage 立刻
+# `ModuleNotFoundError: No module named 'astrbot'`。要测这类函数，
+# 用 tests/test_parse.py 里 `_load_plan_strips()` 那种「按源码抠出纯函数」的办法。
+#
+# 注意：不要写成 `pip install ... && python3 xxx`。CNB 的 script 是每次
+# 新建 shell 执行的，`pip install` 会以 exit 0 收尾，若某个镜像里 pip 不存在
+# （打印 127 后仍退出 0，CNB 不按 127 判错），&& 后的检查就会被整个跳过、
+# Stage 假绿。写成多行，让检查一定执行，由检查自己决定 Stage 的成败。
+#
+# 另外 Pillow 缺位时 tests/test_metadata.py 只打 [SKIP] 并以 0 退出，
+# 等于断言被静默跳过，所以这里显式 --require-pillow 把它变成 FAIL。
+.docker-config: &docker-config
+  docker:
+    image: python:3.11-slim-bookworm
+
 main:
   push:
-    - stages:
+    - <<: *docker-config
+      stages:
         - name: 语法检查
+          script: python3 -m compileall -q .
+        - name: metadata 自检
           script: |
-            python -m compileall -q .
-            echo "compileall done"
+            python3 -m pip install -r requirements.txt
+            python3 tests/test_metadata.py --require-pillow
+  pull_request:
+    - <<: *docker-config
+      stages:
+        - name: 语法检查
+          script: python3 -m compileall -q .
+        - name: 指令解析回归
+          script: |
+            python3 -m pip install -r requirements.txt
+            python3 tests/test_parse.py
+        - name: 文档一致性检查
+          script: python3 tests/test_docs.py
+        - name: metadata 自检
+          script: |
+            python3 -m pip install -r requirements.txt
+            python3 tests/test_metadata.py --require-pillow
 
 $:
   tag_push:
@@ -12,7 +61,7 @@ $:
         - name: 自动打标签
           image: cnbcool/git-auto-tag:latest
           settings:
-            tagFormat: v\${version}
+            tagFormat: v${version}
             branch: $CNB_BRANCH
             repoUrlHttps: $CNB_REPO_URL_HTTPS
           exports:

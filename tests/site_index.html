@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Screenshot 测试页</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin:0; font:16px/1.7 "Noto Sans CJK SC", "WenQuanYi Zen Hei", sans-serif; color:#1f2233; background:#f5f7fb; }
+  .topbar { position: fixed; top:0; left:0; right:0; height:56px; z-index:999;
+    background:linear-gradient(90deg,#3b5bdb,#7048e8); color:#fff;
+    display:flex; align-items:center; padding:0 24px; font-weight:700; }
+  .ad { position: fixed; bottom:16px; right:16px; background:#ff6b6b; color:#fff;
+    padding:10px 18px; border-radius:8px; z-index:1000; }
+  .hero { margin-top:56px; padding:56px 40px; color:#fff;
+    background:linear-gradient(135deg,#4c6ef5 0%,#9c36b5 60%,#f76707 100%); }
+  .hero h1 { margin:0 0 8px; font-size:40px; }
+  .card { background:#fff; margin:24px 40px; padding:24px 28px; border-radius:14px;
+    box-shadow:0 4px 18px rgba(30,40,90,.08); }
+  .card h2 { margin:0 0 12px; font-size:22px; color:#364fc7; }
+  .grid { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin:24px 40px; }
+  .tile { background:#fff; border-radius:12px; padding:18px; text-align:center;
+    box-shadow:0 3px 12px rgba(30,40,90,.07); }
+  .tile b { display:block; font-size:26px; color:#2b8a3e; }
+  code { background:#eef1f8; padding:2px 6px; border-radius:4px; font-size:14px; }
+  .emoji { font-size:30px; }
+  .footer { padding:40px; text-align:center; color:#7583a8; }
+  /* 整页长图必须把它送到**图底**：文档底部右下角的固定浮层 */
+  .corner { position:fixed; right:18px; bottom:18px; background:#0ca678; color:#fff;
+    padding:10px 16px; border-radius:10px; z-index:1001; font-weight:700; }
+  .print-only { display:none; }
+  @media print {
+    /* 只有 print 媒体下才出现的标记，用来验证 print=true 真的切了媒体 */
+    .print-only { display:block; background:#ff00ff; color:#fff; padding:12px 18px;
+      margin:0 40px; border-radius:10px; font-weight:700; }
+    .topbar, .ad, .corner { display:none !important; }
+  }
+</style>
+</head>
+<body>
+<div class="topbar">Screenshot · CDP 直驱截图 测试页</div>
+<div class="ad" id="ad">广告位 · hide=.ad 可隐藏</div>
+<div class="corner" id="corner">右下角固定浮层</div>
+
+<div class="print-only" id="print-only">PRINT-ONLY-MARKER</div>
+<div class="hero">
+  <h1>中文渲染与渐变背景</h1>
+  <p>CDP 直驱截图 · 整页 / 可视区 / 元素 / HTML 渲染 / PDF · 表情：🚀 ✅ 🎉 🇨🇳</p>
+</div>
+
+<div class="grid">
+  <div class="tile" id="tile-a"><b>1.2s</b>冷启动</div>
+  <div class="tile" id="tile-b"><b>&lt;1s</b>单次截图</div>
+  <div class="tile" id="tile-c"><b>20000px</b>长页切片</div>
+</div>
+
+<div class="card" id="main">
+  <h2>核心能力</h2>
+  <p>不依赖 Playwright / Selenium / html2image，只走 <code>Page.navigate</code>、
+  <code>Page.captureScreenshot</code>、<code>Emulation.setDeviceMetricsOverride</code>。</p>
+</div>
+<div class="card" id="block-01">
+  <h2>区块 01 · 长页高度测试</h2>
+  <p>用于验证整页长图超过 6000px 时按 6000px 切片。当前区块序号 1。
+  Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor
+  incididunt ut labore et dolore magna aliqua. 中文段落用于验证字体渲染。</p>
+  <p><span class="emoji">🎯🎯</span> 表情与中文混排。</p>
+</div>
+<div class="card" id="block-02">
+  <h2>区块 02 · 长页高度测试</h2>
+  <p>用于验证整页长图超过 6000px 时按 6000px 切片。当前区块序号 2。
+  Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor
+  incididunt ut labore et dolore magna aliqua. 中文段落用于验证字体渲染。</p>
+  <p><span class="emoji">🎯🎯🎯</span> 表情与中文混排。</p>
+</div>
+<div class="card" id="block-03">
+  <h2>区块 03 · 长页高度测试</h2>
+  <p>用于验证整页长图超过 6000px 时按 6000px 切片。当前区块序号 3。
+  Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor
+  incididunt ut labore et dolore magna aliqua. 中文段落用于验证字体渲染。</p>
+  <p><span class="emoji">🎯🎯🎯🎯</span> 表情与中文混排。</p>
+</div>
+<div class="card" id="block-04">
+  <h2>区块 04 · 长页高度测试</h2>
+  <p>用于验证整页长图超过 6000px 时按 6000px 切片。当前区块序号 4。
+  Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor
+  incididunt ut labore et dolore magna aliqua. 中文段落用于验证字体渲染。</p>
+  <p><span class="emoji">🎯🎯🎯🎯🎯</span> 表情与中文混排。</p>
+</div>
+<div class="card" id="block-05">
+  <h2>区块 05 · 长页高度测试</h2>
+  <p>用于验证整页长图超过 6000px 时按 6000px 切片。当前区块序号 5。
+  Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor
+  incididunt ut labore et dolore magna aliqua. 中文段落用于验证字体渲染。</p>
+  <p><span class="emoji">🎯</span> 表情与中文混排。</p>
+</div>
+<div class="card" id="block-06">
+  <h2>区块 06 · 长页高度测试</h2>
+  <p>用于验证整页长图超过 6000px 时按 6000px 切片。当前区块序号 6。
+  Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor
+  incididunt ut labore et dolore magna aliqua. 中文段落用于验证字体渲染。</p>
+  <p><span class="emoji">🎯🎯</span> 表情与中文混排。</p>
+</div>
+<div class="card" id="block-07">
+  <h2>区块 07 · 长页高度测试</h2>
+  <p>用于验证整页长图超过 6000px 时按 6000px 切片。当前区块序号 7。
+  Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor
+  incididunt ut labore et dolore magna aliqua. 中文段落用于验证字体渲染。</p>
+  <p><span class="emoji">🎯🎯🎯</span> 表情与中文混排。</p>
+</div>
+<div class="card" id="block-08">
+  <h2>区块 08 · 长页高度测试</h2>
+  <p>用于验证整页长图超过 6000px 时按 6000px 切片。当前区块序号 8。
+  Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor
+  incididunt ut labore et dolore magna aliqua. 中文段落用于验证字体渲染。</p>
+  <p><span class="emoji">🎯🎯🎯🎯</span> 表情与中文混排。</p>
+</div>
+<div class="card" id="block-09">
+  <h2>区块 09 · 长页高度测试</h2>
+  <p>用于验证整页长图超过 6000px 时按 6000px 切片。当前区块序号 9。
+  Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor
+  incididunt ut labore et dolore magna aliqua. 中文段落用于验证字体渲染。</p>
+  <p><span class="emoji">🎯🎯🎯🎯🎯</span> 表情与中文混排。</p>
+</div>
+<div class="card" id="block-10">
+  <h2>区块 10 · 长页高度测试</h2>
+  <p>用于验证整页长图超过 6000px 时按 6000px 切片。当前区块序号 10。
+  Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor
+  incididunt ut labore et dolore magna aliqua. 中文段落用于验证字体渲染。</p>
+  <p><span class="emoji">🎯</span> 表情与中文混排。</p>
+</div>
+<div class="card" id="block-11">
+  <h2>区块 11 · 长页高度测试</h2>
+  <p>用于验证整页长图超过 6000px 时按 6000px 切片。当前区块序号 11。
+  Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor
+  incididunt ut labore et dolore magna aliqua. 中文段落用于验证字体渲染。</p>
+  <p><span class="emoji">🎯🎯</span> 表情与中文混排。</p>
+</div>
+<div class="card" id="block-12">
+  <h2>区块 12 · 长页高度测试</h2>
+  <p>用于验证整页长图超过 6000px 时按 6000px 切片。当前区块序号 12。
+  Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor
+  incididunt ut labore et dolore magna aliqua. 中文段落用于验证字体渲染。</p>
+  <p><span class="emoji">🎯🎯🎯</span> 表情与中文混排。</p>
+</div>
+<div class="card" id="block-13">
+  <h2>区块 13 · 长页高度测试</h2>
+  <p>用于验证整页长图超过 6000px 时按 6000px 切片。当前区块序号 13。
+  Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor
+  incididunt ut labore et dolore magna aliqua. 中文段落用于验证字体渲染。</p>
+  <p><span class="emoji">🎯🎯🎯🎯</span> 表情与中文混排。</p>
+</div>
+<div class="card" id="block-14">
+  <h2>区块 14 · 长页高度测试</h2>
+  <p>用于验证整页长图超过 6000px 时按 6000px 切片。当前区块序号 14。
+  Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor
+  incididunt ut labore et dolore magna aliqua. 中文段落用于验证字体渲染。</p>
+  <p><span class="emoji">🎯🎯🎯🎯🎯</span> 表情与中文混排。</p>
+</div>
+<div class="card" id="block-15">
+  <h2>区块 15 · 长页高度测试</h2>
+  <p>用于验证整页长图超过 6000px 时按 6000px 切片。当前区块序号 15。
+  Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor
+  incididunt ut labore et dolore magna aliqua. 中文段落用于验证字体渲染。</p>
+  <p><span class="emoji">🎯</span> 表情与中文混排。</p>
+</div>
+<div class="card" id="block-16">
+  <h2>区块 16 · 长页高度测试</h2>
+  <p>用于验证整页长图超过 6000px 时按 6000px 切片。当前区块序号 16。
+  Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor
+  incididunt ut labore et dolore magna aliqua. 中文段落用于验证字体渲染。</p>
+  <p><span class="emoji">🎯🎯</span> 表情与中文混排。</p>
+</div>
+<div class="card" id="block-17">
+  <h2>区块 17 · 长页高度测试</h2>
+  <p>用于验证整页长图超过 6000px 时按 6000px 切片。当前区块序号 17。
+  Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor
+  incididunt ut labore et dolore magna aliqua. 中文段落用于验证字体渲染。</p>
+  <p><span class="emoji">🎯🎯🎯</span> 表情与中文混排。</p>
+</div>
+<div class="card" id="block-18">
+  <h2>区块 18 · 长页高度测试</h2>
+  <p>用于验证整页长图超过 6000px 时按 6000px 切片。当前区块序号 18。
+  Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor
+  incididunt ut labore et dolore magna aliqua. 中文段落用于验证字体渲染。</p>
+  <p><span class="emoji">🎯🎯🎯🎯</span> 表情与中文混排。</p>
+</div>
+<div class="card" id="block-19">
+  <h2>区块 19 · 长页高度测试</h2>
+  <p>用于验证整页长图超过 6000px 时按 6000px 切片。当前区块序号 19。
+  Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor
+  incididunt ut labore et dolore magna aliqua. 中文段落用于验证字体渲染。</p>
+  <p><span class="emoji">🎯🎯🎯🎯🎯</span> 表情与中文混排。</p>
+</div>
+<div class="card" id="block-20">
+  <h2>区块 20 · 长页高度测试</h2>
+  <p>用于验证整页长图超过 6000px 时按 6000px 切片。当前区块序号 20。
+  Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor
+  incididunt ut labore et dolore magna aliqua. 中文段落用于验证字体渲染。</p>
+  <p><span class="emoji">🎯</span> 表情与中文混排。</p>
+</div>
+<div class="card" id="block-21">
+  <h2>区块 21 · 长页高度测试</h2>
+  <p>用于验证整页长图超过 6000px 时按 6000px 切片。当前区块序号 21。
+  Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor
+  incididunt ut labore et dolore magna aliqua. 中文段落用于验证字体渲染。</p>
+  <p><span class="emoji">🎯🎯</span> 表情与中文混排。</p>
+</div>
+<div class="card" id="block-22">
+  <h2>区块 22 · 长页高度测试</h2>
+  <p>用于验证整页长图超过 6000px 时按 6000px 切片。当前区块序号 22。
+  Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor
+  incididunt ut labore et dolore magna aliqua. 中文段落用于验证字体渲染。</p>
+  <p><span class="emoji">🎯🎯🎯</span> 表情与中文混排。</p>
+</div>
+<div class="card" id="block-23">
+  <h2>区块 23 · 长页高度测试</h2>
+  <p>用于验证整页长图超过 6000px 时按 6000px 切片。当前区块序号 23。
+  Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor
+  incididunt ut labore et dolore magna aliqua. 中文段落用于验证字体渲染。</p>
+  <p><span class="emoji">🎯🎯🎯🎯</span> 表情与中文混排。</p>
+</div>
+<div class="card" id="block-24">
+  <h2>区块 24 · 长页高度测试</h2>
+  <p>用于验证整页长图超过 6000px 时按 6000px 切片。当前区块序号 24。
+  Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor
+  incididunt ut labore et dolore magna aliqua. 中文段落用于验证字体渲染。</p>
+  <p><span class="emoji">🎯🎯🎯🎯🎯</span> 表情与中文混排。</p>
+</div>
+<div class="card" id="block-25">
+  <h2>区块 25 · 长页高度测试</h2>
+  <p>用于验证整页长图超过 6000px 时按 6000px 切片。当前区块序号 25。
+  Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor
+  incididunt ut labore et dolore magna aliqua. 中文段落用于验证字体渲染。</p>
+  <p><span class="emoji">🎯</span> 表情与中文混排。</p>
+</div>
+<div class="card" id="block-26">
+  <h2>区块 26 · 长页高度测试</h2>
+  <p>用于验证整页长图超过 6000px 时按 6000px 切片。当前区块序号 26。
+  Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor
+  incididunt ut labore et dolore magna aliqua. 中文段落用于验证字体渲染。</p>
+  <p><span class="emoji">🎯🎯</span> 表情与中文混排。</p>
+</div>
+<div class="card" id="block-27">
+  <h2>区块 27 · 长页高度测试</h2>
+  <p>用于验证整页长图超过 6000px 时按 6000px 切片。当前区块序号 27。
+  Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor
+  incididunt ut labore et dolore magna aliqua. 中文段落用于验证字体渲染。</p>
+  <p><span class="emoji">🎯🎯🎯</span> 表情与中文混排。</p>
+</div>
+<div class="card" id="block-28">
+  <h2>区块 28 · 长页高度测试</h2>
+  <p>用于验证整页长图超过 6000px 时按 6000px 切片。当前区块序号 28。
+  Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor
+  incididunt ut labore et dolore magna aliqua. 中文段落用于验证字体渲染。</p>
+  <p><span class="emoji">🎯🎯🎯🎯</span> 表情与中文混排。</p>
+</div>
+<div class="card" id="block-29">
+  <h2>区块 29 · 长页高度测试</h2>
+  <p>用于验证整页长图超过 6000px 时按 6000px 切片。当前区块序号 29。
+  Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor
+  incididunt ut labore et dolore magna aliqua. 中文段落用于验证字体渲染。</p>
+  <p><span class="emoji">🎯🎯🎯🎯🎯</span> 表情与中文混排。</p>
+</div>
+<div class="card" id="block-30">
+  <h2>区块 30 · 长页高度测试</h2>
+  <p>用于验证整页长图超过 6000px 时按 6000px 切片。当前区块序号 30。
+  Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor
+  incididunt ut labore et dolore magna aliqua. 中文段落用于验证字体渲染。</p>
+  <p><span class="emoji">🎯</span> 表情与中文混排。</p>
+</div>
+<div class="card" id="block-31">
+  <h2>区块 31 · 长页高度测试</h2>
+  <p>用于验证整页长图超过 6000px 时按 6000px 切片。当前区块序号 31。
+  Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor
+  incididunt ut labore et dolore magna aliqua. 中文段落用于验证字体渲染。</p>
+  <p><span class="emoji">🎯🎯</span> 表情与中文混排。</p>
+</div>
+<div class="card" id="block-32">
+  <h2>区块 32 · 长页高度测试</h2>
+  <p>用于验证整页长图超过 6000px 时按 6000px 切片。当前区块序号 32。
+  Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor
+  incididunt ut labore et dolore magna aliqua. 中文段落用于验证字体渲染。</p>
+  <p><span class="emoji">🎯🎯🎯</span> 表情与中文混排。</p>
+</div>
+<div class="card" id="block-33">
+  <h2>区块 33 · 长页高度测试</h2>
+  <p>用于验证整页长图超过 6000px 时按 6000px 切片。当前区块序号 33。
+  Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor
+  incididunt ut labore et dolore magna aliqua. 中文段落用于验证字体渲染。</p>
+  <p><span class="emoji">🎯🎯🎯🎯</span> 表情与中文混排。</p>
+</div>
+<div class="card" id="block-34">
+  <h2>区块 34 · 长页高度测试</h2>
+  <p>用于验证整页长图超过 6000px 时按 6000px 切片。当前区块序号 34。
+  Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor
+  incididunt ut labore et dolore magna aliqua. 中文段落用于验证字体渲染。</p>
+  <p><span class="emoji">🎯🎯🎯🎯🎯</span> 表情与中文混排。</p>
+</div>
+<div class="card" id="block-35">
+  <h2>区块 35 · 长页高度测试</h2>
+  <p>用于验证整页长图超过 6000px 时按 6000px 切片。当前区块序号 35。
+  Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor
+  incididunt ut labore et dolore magna aliqua. 中文段落用于验证字体渲染。</p>
+  <p><span class="emoji">🎯</span> 表情与中文混排。</p>
+</div>
+<div class="card" id="block-36">
+  <h2>区块 36 · 长页高度测试</h2>
+  <p>用于验证整页长图超过 6000px 时按 6000px 切片。当前区块序号 36。
+  Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor
+  incididunt ut labore et dolore magna aliqua. 中文段落用于验证字体渲染。</p>
+  <p><span class="emoji">🎯🎯</span> 表情与中文混排。</p>
+</div>
+<div class="card" id="block-37">
+  <h2>区块 37 · 长页高度测试</h2>
+  <p>用于验证整页长图超过 6000px 时按 6000px 切片。当前区块序号 37。
+  Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor
+  incididunt ut labore et dolore magna aliqua. 中文段落用于验证字体渲染。</p>
+  <p><span class="emoji">🎯🎯🎯</span> 表情与中文混排。</p>
+</div>
+<div class="card" id="block-38">
+  <h2>区块 38 · 长页高度测试</h2>
+  <p>用于验证整页长图超过 6000px 时按 6000px 切片。当前区块序号 38。
+  Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor
+  incididunt ut labore et dolore magna aliqua. 中文段落用于验证字体渲染。</p>
+  <p><span class="emoji">🎯🎯🎯🎯</span> 表情与中文混排。</p>
+</div>
+<div class="card" id="block-39">
+  <h2>区块 39 · 长页高度测试</h2>
+  <p>用于验证整页长图超过 6000px 时按 6000px 切片。当前区块序号 39。
+  Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor
+  incididunt ut labore et dolore magna aliqua. 中文段落用于验证字体渲染。</p>
+  <p><span class="emoji">🎯🎯🎯🎯🎯</span> 表情与中文混排。</p>
+</div>
+<div class="card" id="block-40">
+  <h2>区块 40 · 长页高度测试</h2>
+  <p>用于验证整页长图超过 6000px 时按 6000px 切片。当前区块序号 40。
+  Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor
+  incididunt ut labore et dolore magna aliqua. 中文段落用于验证字体渲染。</p>
+  <p><span class="emoji">🎯</span> 表情与中文混排。</p>
+</div>
+<div class="card" id="tall-block" style="min-height:2400px">
+  <h2>区块 TALL · 元素截图高度探针</h2>
+  <p>这个卡片高于视口，用来验证元素截图在布局视口之外也能正确取到整块。</p>
+</div>
+<div class="card" id="alpha-card" style="background:transparent;box-shadow:none">
+  <h2 style="color:#364fc7">透明背景探针</h2>
+  <p>这个卡片自身不画底色，用于验证 <code>transparent</code> 下 PNG 真的带 alpha。</p>
+  <div id="alpha-tile" style="width:240px;height:120px;border-radius:16px;
+       background:radial-gradient(circle,#4c6ef5,#f76707)"></div>
+</div>
+<div id="nobp" style="background:transparent;padding:20px 40px">
+  <div id="nobp-tile" style="width:200px;height:80px;background:linear-gradient(90deg,#4c6ef5,#9c36b5);
+       border-radius:12px"></div>
+</div>
+<div class="card" id="lazy-fast-card">
+  <h2>紧跟 load 的延迟插图探针</h2>
+  <div id="lazy-fast-slot" style="width:200px;height:100px;background:#ced4da">观察窗口内插图…</div>
+</div>
+<div class="card" id="lazy-card">
+  <h2>延迟插图探针</h2>
+  <div id="lazy-slot" style="width:320px;height:160px;background:#dee2e6">图片懒加载位：加载中…</div>
+</div>
+<div class="card" id="shadow-card" style="box-shadow:0 0 40px 18px rgba(255,0,0,.5);
+     outline:6px solid #0ca678;border-radius:14px">
+  <h2>阴影与描边探针</h2>
+  <p>这个卡片带 40px 红色外阴影 + 6px 绿色 outline，元素截图默认会被 border box 切掉。</p>
+</div>
+<div class="footer" id="page-footer">Screenshot 测试页 · 页脚（wait=.footer 等待目标）</div>
+<script>
+// 700ms 后才把图片挂进 DOM：验证「截图时 DOM 才变化」不会被截成占位图
+setTimeout(() => {
+  const slot = document.getElementById('lazy-slot');
+  if (slot) {
+    slot.style.background = '#fff';
+    slot.textContent = '';
+    const img = document.createElement('img');
+    img.src = '/late.png';
+    img.style.width = '320px';
+    img.style.height = '160px';
+    img.style.display = 'block';
+    slot.appendChild(img);
+  }
+}, 700);
+
+// 紧跟 load 之后（120ms）就插图，用来验证默认的 DOM 观察窗口能兜住这种「一拍后变化」
+setTimeout(() => {
+  const slot = document.getElementById('lazy-fast-slot');
+  if (slot) {
+    slot.style.background = '#212529';
+    slot.textContent = 'FAST-STATE';
+  }
+}, 120);
+</script>
+</body>
+</html>
