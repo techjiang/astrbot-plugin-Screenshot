@@ -66,5 +66,20 @@
     "type": "int",
     "description": "默认导航超时（毫秒）",
     "default": 20000
+  },
+  "transparent": {
+    "type": "bool",
+    "description": "默认保留页面透明背景（PNG 带 alpha 通道，适合截无背景 Logo/图标）",
+    "default": false
+  },
+  "padding": {
+    "type": "int",
+    "description": "元素截图默认向外留白像素数，用来容下 box-shadow / outline / 圆角光晕",
+    "default": 0
+  },
+  "render_watch_ms": {
+    "type": "int",
+    "description": "截图前观察 DOM 变化的窗口（毫秒），用于兜住 setTimeout 后才挂图/改版的页面",
+    "default": 250
   }
 }

@@ -132,18 +132,30 @@ class ShotOptions:
     img_format: str = "png"
     quality: int = 88
     max_height: int = 0  # 0 表示交给插件级配置决定
+    # 用户是否显式写了 max_height（写了 0 就是「本次不切片」，不能再被配置覆盖）
+    max_height_explicit: bool = False
     light: bool = False  # 渲染 HTML 时套用浅色骨架
     print_media: bool = False  # 是否切到 print 媒体查询
+    padding: int = 0  # 元素截图向外扩的留白（px），用来容下阴影/描边/圆角光晕
+    transparent: bool = False  # 保留页面透明背景（输出 PNG 时才有意义）
 
     @property
     def is_html(self) -> bool:
         return self.mode == "render"
 
 
+# 引号内的取值允许反斜杠转义（``watermark="a \" b"``），否则整段会被切成碎片
 _TOKEN_RE = re.compile(
-    r"""([A-Za-z_][\w\-]*)=\s*(?:"([^"]*)"|'([^']*)'|([^\s]+))"""
-    r"""|"([^"]*)"|'([^']*)'|(\S+)"""
+    r"""([A-Za-z_][\w\-]*)=\s*(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'|([^\s]+))"""
+    r"""|"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'|(\S+)"""
 )
+
+_ESCAPE_RE = re.compile(r'\\([\\"\'])')
+
+
+def _unescape(value: str) -> str:
+    """还原引号内的 ``\\"`` / ``\\'`` / ``\\\\``，让用户能表达带引号的水印与选择器。"""
+    return _ESCAPE_RE.sub(r"\1", value) if value else value
 
 
 def _tokenize_classic(raw: str) -> list[str]:
@@ -169,18 +181,33 @@ def tokenize(raw: str) -> list[str]:
         key, dq, sq, bare, dq2, sq2, word = match.groups()
         if key:
             value = dq if dq is not None else (sq if sq is not None else bare)
-            tokens.append(f"{key}={value}")
+            tokens.append(f"{key}={_unescape(value)}")
         else:
             piece = dq2 if dq2 is not None else (sq2 if sq2 is not None else word)
             if piece:
-                tokens.append(piece)
+                tokens.append(_unescape(piece))
     if not tokens or _has_unbalanced_quote(raw):
         return _tokenize_classic(raw)
     return tokens
 
 
 def _has_unbalanced_quote(raw: str) -> bool:
-    return any(raw.count(quote) % 2 for quote in ('"', "'"))
+    """判断引号是否没配对（转义引号不算数）。"""
+    for quote in ('"', "'"):
+        count = 0
+        escaped = False
+        for char in raw:
+            if escaped:
+                escaped = False
+                continue
+            if char == "\\":
+                escaped = True
+                continue
+            if char == quote:
+                count += 1
+        if count % 2:
+            return True
+    return False
 
 
 def parse_instruction(
@@ -203,6 +230,8 @@ def parse_instruction(
         timeout_ms=as_int(defaults.get("timeout_ms"), 20000, low=1000, high=600000),
         img_format=str(defaults.get("image_format") or "png").lower(),
         quality=as_int(defaults.get("jpeg_quality"), 88, low=10, high=100),
+        transparent=parse_bool(defaults.get("transparent"), False),
+        padding=as_int(defaults.get("padding"), 0, low=0, high=400),
     )
 
     for token in tokenize(raw):
@@ -237,6 +266,9 @@ def parse_instruction(
             continue
         if lowered in ("pdf",):
             opts.img_format = "pdf"
+            continue
+        if lowered in ("transparent", "透明", "透明背景", "alpha"):
+            opts.transparent = True
             continue
 
         ratio = _RATIO_RE.match(lowered)
@@ -319,6 +351,12 @@ def _apply_kv(opts: ShotOptions, key: str, value: str) -> None:
         opts.quality = as_int(value, opts.quality, low=10, high=100)
     elif key in ("max_height", "maxheight", "切片高度"):
         opts.max_height = as_int(value, 0, low=0, high=100000)
+        opts.max_height_explicit = True
+    elif key in ("padding", "pad", "留白", "边距"):
+        opts.padding = as_int(value, opts.padding, low=0, high=400)
+    elif key in ("transparent", "透明", "alpha", "bg"):
+        opts.transparent = parse_bool(value, opts.transparent) or value.lower() in (
+            "transparent", "透明", "none")
 
 
 def viewport_for(device: str) -> tuple[tuple[int, int], float, bool]:

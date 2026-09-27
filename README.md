@@ -57,6 +57,8 @@ Docker 部署时，使用自带 Chromium 的镜像，或在容器内安装上述
 /截图 <网址> format=jpeg        输出 JPEG（更小）
 /截图 <网址> format=pdf         输出 PDF（超长页面首选）
 /截图 <网址> print              切到 @media print（有的站点只在打印样式里去掉导航）
+/截图 <网址> transparent        透明背景，PNG 带 alpha（截无背景 Logo/图标）
+/截图 <网址> #卡片 padding=24   元素截图向外留白，容下阴影与描边
 /元素截图 <网址> <CSS选择器>    元素截图
 /渲染截图 <h1>你好</h1>         直接渲染 HTML 片段
 /截图帮助                       查看用法
@@ -84,7 +86,9 @@ Docker 部署时，使用自带 Chromium 的镜像，或在容器内安装上述
 | `timeout=30000` | 页面导航超时毫秒 | `20000` |
 | `format=png\|jpeg\|pdf` | 输出格式 | `png` |
 | `quality=80` | JPEG 质量 | `88` |
-| `max_height=12000` | 本次截图的切片高度 | 跟随配置 |
+| `max_height=12000` | 本次截图的切片高度，`0` 表示本次不切片 | 跟随配置 |
+| `transparent` | 透明背景，PNG 保留 alpha 通道 | `false` |
+| `padding=24` | 元素截图向外扩的留白像素，容下 `box-shadow` / `outline` | `0` |
 
 ### 渲染 HTML
 
@@ -113,11 +117,48 @@ Docker 部署时，使用自带 Chromium 的镜像，或在容器内安装上述
 | `dark` | bool | 默认是否暗色 |
 | `timeout_ms` | int | 默认导航超时 |
 | `max_dpr` | float | 大图自动降到这个 DPR 以减少分段，`0` 表示不降 |
+| `transparent` | bool | 默认是否保留页面透明背景 |
+| `padding` | int | 元素截图默认向外留白的像素数 |
+| `render_watch_ms` | int | 截图前观察 DOM 变化的窗口毫秒数，兜住 `setTimeout` 后才挂图/改版的页面 |
+
+### 透明背景（无背景 Logo / 图标）
+
+有些页面（尤其是 Logo 展示页、纯图标页）本身不画底色。默认截图会把画布刷成白底，
+无背景素材截出来就是一块白。加 `transparent` 后插件会先
+`Emulation.setDefaultBackgroundColorOverride(alpha=0)`，再让
+`Page.captureScreenshot` 带上 `omitBackground`，出图就是真正的 `RGBA` PNG：
+
+```
+/截图 https://example.com/logo transparent
+```
+
+注意语义：`transparent` 是「不给页面额外加背景」，**不会**擦掉页面自己画的底色。
+页面若写了 `body{background:#fff}`，结果仍是白底 —— 与浏览器行为一致。
+
+### 元素留白（阴影与描边）
+
+元素的裁剪范围默认是 CDP 给的 border box，`box-shadow`、`outline`、圆角光晕都在框外，
+会被整圈切掉。用 `padding=` 显式向外扩：
+
+```
+/截图 https://example.com/card #card padding=24
+```
+
+另外，元素如果在页面上被拆成多块（例如折行的内联元素），插件取的是
+`DOM.getContentQuads` 全部四边形的并集，而不是只覆盖第一行的 border box。
+
+### 等待「稍后才变化」的页面
+
+页面常用 `setTimeout(() => img.src = ...)` 延迟挂图。插件在截图前会开一个
+DOM 观察窗口（默认 250ms），期间若检测到 `<img>` 新增或 `src` 变化就继续等图片解码，
+避免截到「图片加载中…」的灰块。窗口长度由 `render_watch_ms` 调整。
 
 ## 行为说明
 
 - **整页图过高会自动切片**：默认 6000px 一段，切片后仍超体积预算时重编码为 JPEG，
-  避免聊天平台拒收；`format=pdf` 则不做切片，直接折成多页 PDF。
+  避免聊天平台拒收；透明图不会降级成 JPEG（否则 alpha 会变成白底）。
+- **PDF 按段分页**：先按一屏一段切开，再把每段等比压进一张 A4（宽图自动转横向），
+  所以正文不会被切点从中间横切。
 - **超长页面分段截取再拼接**：单张位图高度有上限（32000px，按 DPR 折算成 CSS 高度），
   超过就分段截图后纵向拼接，而不是把超出部分裁掉。
 - **`position:fixed` 元素贴在图底**：截图前会把运行时视口临时拉到页面高度，
@@ -188,7 +229,7 @@ ASTRBOT_ROOT=/tmp/ab SHOT_SITE_DIR=/tmp/shot_site python3 tests/e2e_astrbot.py
 脚本会把 `tests/site_*.html` 拷进站点目录（`site_index.html` → `index.html`），
 并在 8899 起端口被占用时自动往后找空闲端口。
 
-当前基线：**AstrBot 4.14.6 + Chromium 153 headless，25/25 用例通过。**
+当前基线：**AstrBot 4.14.6 + Chromium 153 headless，39/39 用例通过。**
 
 ### 实测中修掉的缺陷
 
@@ -212,6 +253,14 @@ ASTRBOT_ROOT=/tmp/ab SHOT_SITE_DIR=/tmp/shot_site python3 tests/e2e_astrbot.py
 | `Page.navigate` 的超时与「等页面稳定」混在一起 | 导航超时被塞进调用方的整页预算，两者应各自独立 |
 | 测试脚本端口被占用时只报 `Address already in use` | 起站点时不避让；现在自动往后找空闲端口 |
 | emoji 同色像素被误判成「未隐藏的色块」 | 靠肉眼判断不可靠；改用「最长水平连续游程」的像素级断言区分实心色块与零散笔画 |
+| 无背景 Logo 截出来是一块白 | `captureScreenshot` 把白底烘焙进图里，出图恒为 `RGB`；`omitBackground` 单独传也无效，必须配合 `Emulation.setDefaultBackgroundColorOverride(alpha=0)` |
+| 元素截图的阴影与描边**整圈消失** | 裁剪只取 `DOM.getBoxModel` 的 border box，`box-shadow` / `outline` / 圆角光晕都在框外；改为取 `DOM.getContentQuads` 全部四边形的并集，并新增 `padding=` 主动留白 |
+| 元素截图里的水印**整块不见** | 水印按「文档底」绝对定位，落在元素裁剪框之外；改为贴元素右下角，且与裁剪共用同一矩形 |
+| 延迟挂载的图片被截成「图片加载中…」灰块 | 旧实现只统计**调用那一刻**已在 DOM 里的图。实测 700ms 后才插图的区块，默认链路恒为占位图，加 `waitms=1500` 才正常；现在截图前会开 DOM 观察窗口，检测到新增 `<img>` 或 `src` 变化就继续等 |
+| PDF 把一行文字横切成两半 | 按 A4 像素高度硬裁，切点与内容无关；改为按段分页，每段等比压进一页 |
+| 指令里写 `max_height=0` 无效 | `opts.max_height or 配置值` 让「显式写 0」被当成「没填」；现在区分「没写」与「写了 0」 |
+| 引号内转义引号被切成碎片 | 分词正则不认 `\"`，`watermark="a \" b"` 会解析出两个 token，多余的 `b"` 还会污染选择器；现在支持转义并还原 |
+| 测试桩缺少 AstrBot 数据目录就整轮跑不起来 | `tests/` 现在会自建站点目录，并把静态资源一并拷贝 |
 
 ## License
 

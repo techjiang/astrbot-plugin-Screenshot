@@ -60,6 +60,9 @@ class ScreenshotPlugin(Star):
                 headers=load_extra_headers(self.config),
                 max_concurrent=as_int(self._conf("max_concurrent", 4), 4, low=1, high=16),
                 max_dpr=as_float(self._conf("max_dpr", 0), 0.0, low=0.0, high=4.0),
+                render_watch_ms=as_int(
+                    self._conf("render_watch_ms", 250), 250, low=0, high=5000
+                ),
             )
         return self._session
 
@@ -161,9 +164,13 @@ class ScreenshotPlugin(Star):
 
     async def _capture(self, opts: ShotOptions) -> list[bytes]:
         session = await self._get_session()
-        max_height = as_int(
-            opts.max_height or self._conf("max_height", 6000), 6000, low=0, high=100000
-        )
+        # 区分「没写 max_height」（跟随插件配置）与「显式写了 0」（本次不切片）：
+        # 老实现用 ``opts.max_height or ...``，用户敲 max_height=0 会被当成没填，
+        # 仍然按 6000 切片，指令形同虚设。
+        if opts.max_height_explicit:
+            max_height = max(0, opts.max_height)
+        else:
+            max_height = as_int(self._conf("max_height", 6000), 6000, low=0, high=100000)
 
         if opts.mode == "render":
             html = opts.url
@@ -234,11 +241,17 @@ HELP_TEXT = """Screenshot · CDP 直驱截图
 /截图 <网址> #main .card          截指定元素
 /截图 <网址> iphone scale=2       设备与缩放
 /截图 <网址> dark                 暗色模式
+/截图 <网址> transparent          透明背景（PNG 带 alpha，适合 Logo/图标）
+/截图 <网址> padding=24           元素截图向外留白（容下阴影与描边）
 /截图 <网址> format=jpeg quality=80  指定输出格式
 /截图 <网址> format=pdf           输出 PDF，适合超长页面
 /元素截图 <网址> <CSS选择器>      元素截图
 /渲染截图 <html>...               渲染 HTML 片段
 
-参数：wait=选择器  waitms=毫秒  hide=.广告,.浮层  watermark=水印  timeout=毫秒
+参数：wait=选择器  waitms=毫秒  hide=.广告,.浮层  watermark=水印
+      timeout=毫秒  padding=像素  transparent  max_height=像素(0=不切)
 设备：desktop / laptop / iphone / android / pad，也可直接写 1440x900
+
+值里要带空格或引号时用引号包起来，内部引号用反斜杠转义：
+/截图 example.com watermark="科技酱 官方"
 """

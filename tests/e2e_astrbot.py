@@ -108,51 +108,77 @@ def _make_context(cfg):
 def _find_watermark_bottom(image_path: str) -> int | None:
     """在图片最右侧区域找出水印灰胶囊的底部 y 坐标。
 
-    水印是一块**实心**半透明黑胶囊：在某一行里会连续铺满整块宽度。
-    正文文字同样是中性灰，但每行只有零散笔画、且字高远小于胶囊宽度，
-    所以这里要求「连续游程达到胶囊宽度」才认，避免把正文误判成水印。
+    水印是 `rgba(0,0,0,.45)` 的胶囊叠在页面上，白底合成后是一块
+    **主色恒定**的中灰（实测 `(134,136,138)`），胶囊内部的白字只占少数像素。
+
+    判据（四条同时成立）：
+    1. 行内存在足够长的连续中灰段（汉字笔画被字距打断，远达不到这个长度）；
+    2. 该段里**主色占比高** —— 说明它是一块实心填充，而不是文字的零散笔画；
+    3. 主色是中性灰；
+    4. 命中行连成一段「扁的」区域（胶囊高度远小于宽度）。
+
+    第 2 条是关键：只用「游程 + 灰」会把粗体中文、深色 emoji 误判成水印，
+    实测两类都踩过；而抗锯齿文字的主色占比远低于实心胶囊。
     """
     import numpy as np
     from PIL import Image
 
     with Image.open(image_path) as handle:
         arr = np.asarray(handle.convert("RGB")).astype(int)
-    width = arr.shape[1]
-    band = max(320, int(width * 0.12))
-    right = arr[:, max(0, width - band):, :]
-    neutral = (abs(right[:, :, 0] - right[:, :, 1]) < 14) & (
-        abs(right[:, :, 1] - right[:, :, 2]) < 14
-    )
-    darker = (right[:, :, 0] > 70) & (right[:, :, 0] < 205)
-    mask = neutral & darker
+    height, width = arr.shape[0], arr.shape[1]
+    band = max(200, int(width * 0.14))
+    left = max(0, width - band)
+    region = arr[:, left:, :]
 
-    # 胶囊宽度约 80~260px（随 DPR 放大）；正文文字的单行连续游程通常 < 20px。
-    # 取 55px 作为门槛，既能认出胶囊又不会把正文笔画算进来。
-    min_run = 55
-    rows: list[int] = []
-    for y in range(arr.shape[0]):
+    neutral = (abs(region[:, :, 0] - region[:, :, 1]) < 12) & (
+        abs(region[:, :, 1] - region[:, :, 2]) < 12
+    )
+    midgray = (region[:, :, 0] > 70) & (region[:, :, 0] < 200)
+    mask = neutral & midgray
+
+    def solid_span(y: int) -> int:
+        """行内最长的「实心」连续段长度，实心=主色占比 >= 60%。"""
         xs = np.where(mask[y])[0]
-        if len(xs) < min_run:
-            continue
-        run = best = 1
-        for index in range(1, len(xs)):
-            run = run + 1 if xs[index] - xs[index - 1] <= 2 else 1
-            best = max(best, run)
-        if best >= min_run:
-            rows.append(y)
+        if len(xs) < 25:
+            return 0
+        runs: list[tuple[int, int]] = []
+        start = prev = xs[0]
+        for x in xs[1:]:
+            if x - prev <= 2:
+                prev = x
+                continue
+            runs.append((start, prev))
+            start = prev = x
+        runs.append((start, prev))
+        best = 0
+        for lo, hi in runs:
+            span = hi - lo + 1
+            if span < 25 or span < best:
+                continue
+            pixels = region[y, lo: hi + 1, :]
+            grey = pixels[neutral[y, lo: hi + 1]]
+            if len(grey) < span * 0.6:
+                continue
+            med = np.median(grey, axis=0)
+            fraction = float((abs(grey - med) < 22).mean())
+            if fraction >= 0.6:
+                best = span
+        return best
+
+    rows = [y for y in range(height) if solid_span(y) >= 25]
     if not rows:
         return None
     groups: list[tuple[int, int]] = []
     start = prev = rows[0]
     for y in rows[1:]:
-        if y - prev <= 6:
+        if y - prev <= 8:
             prev = y
         else:
             groups.append((start, prev))
             start = prev = y
     groups.append((start, prev))
-    # 胶囊高度视 DPR 在 20~100px 之间；正文段落（若恰好命中）会明显更厚
-    plausible = [g for g in groups if 12 <= g[1] - g[0] <= 110]
+    # 胶囊高度随 DPR 变化：DPR=1 的长图上约 5~6px，DPR=3 时可达上百 px
+    plausible = [g for g in groups if 3 <= g[1] - g[0] <= 200]
     return max((g[1] for g in plausible), default=None)
 
 
@@ -282,6 +308,40 @@ def _check_assertions(case: dict, images: list[str], texts: list[str]) -> bool:
             if not low <= total <= high:
                 print(f"      ↳ 断言失败：切片总高 {total} 不在 [{low}, {high}]")
                 return False
+        if kind == "has_alpha":
+            from PIL import Image
+
+            with Image.open(images[0]) as handle:
+                alpha = handle.mode in ("RGBA", "LA") or (
+                    handle.mode == "P" and "transparency" in handle.info)
+            if alpha != rule["value"]:
+                print(f"      ↳ 断言失败：alpha={alpha}，期望 {rule['value']}")
+                return False
+        if kind == "corner_transparent":
+            import numpy as np
+            from PIL import Image
+
+            with Image.open(images[0]) as handle:
+                arr = np.asarray(handle.convert("RGBA"))
+            # 页面本身有底色时四角本来就是实色，这里只看「是否存在透明像素」
+            transparent = int((arr[:, :, 3] < 10).sum())
+            if rule["value"] and transparent < rule.get("min_pixels", 500):
+                print(f"      ↳ 断言失败：透明像素仅 {transparent} 个，PNG 没真的带 alpha")
+                return False
+        if kind == "min_size":
+            from PIL import Image
+
+            with Image.open(images[0]) as handle:
+                width, height = handle.size
+            low_w, low_h = rule["value"]
+            if width < low_w or height < low_h:
+                print(f"      ↳ 断言失败：尺寸 {(width, height)} 小于 {(low_w, low_h)}")
+                return False
+        if kind == "watermark_anywhere":
+            found = any(_find_watermark_bottom(path) is not None for path in images)
+            if found != rule["value"]:
+                print(f"      ↳ 断言失败：水印存在={found}，期望 {rule['value']}")
+                return False
         if kind == "text_contains":
             joined = " ".join(texts)
             if rule["value"] not in joined:
@@ -365,8 +425,11 @@ async def main() -> int:
     plugin = type(info.star_cls)(pm.context, {"browser_path": os.environ.get("SHOT_BROWSER", "")})
 
     site_dir = Path(os.environ.get("SHOT_SITE_DIR", "/tmp/shot_site"))
+    site_dir.mkdir(parents=True, exist_ok=True)
     for source in sorted(HERE.glob("site_*.html")):  # site_index.html → index.html
         (site_dir / source.name[len("site_"):]).write_bytes(source.read_bytes())
+    for asset in sorted(HERE.glob("*_asset.*")):  # late_asset.png → late.png
+        (site_dir / asset.name.replace("_asset", "")).write_bytes(asset.read_bytes())
     if not (site_dir / "index.html").exists():
         print(f"缺少测试站点：{site_dir}/index.html")
         return 3

@@ -343,6 +343,54 @@
   <h2>区块 TALL · 元素截图高度探针</h2>
   <p>这个卡片高于视口，用来验证元素截图在布局视口之外也能正确取到整块。</p>
 </div>
+<div class="card" id="alpha-card" style="background:transparent;box-shadow:none">
+  <h2 style="color:#364fc7">透明背景探针</h2>
+  <p>这个卡片自身不画底色，用于验证 <code>transparent</code> 下 PNG 真的带 alpha。</p>
+  <div id="alpha-tile" style="width:240px;height:120px;border-radius:16px;
+       background:radial-gradient(circle,#4c6ef5,#f76707)"></div>
+</div>
+<div id="nobp" style="background:transparent;padding:20px 40px">
+  <div id="nobp-tile" style="width:200px;height:80px;background:linear-gradient(90deg,#4c6ef5,#9c36b5);
+       border-radius:12px"></div>
+</div>
+<div class="card" id="lazy-fast-card">
+  <h2>紧跟 load 的延迟插图探针</h2>
+  <div id="lazy-fast-slot" style="width:200px;height:100px;background:#ced4da">观察窗口内插图…</div>
+</div>
+<div class="card" id="lazy-card">
+  <h2>延迟插图探针</h2>
+  <div id="lazy-slot" style="width:320px;height:160px;background:#dee2e6">图片懒加载位：加载中…</div>
+</div>
+<div class="card" id="shadow-card" style="box-shadow:0 0 40px 18px rgba(255,0,0,.5);
+     outline:6px solid #0ca678;border-radius:14px">
+  <h2>阴影与描边探针</h2>
+  <p>这个卡片带 40px 红色外阴影 + 6px 绿色 outline，元素截图默认会被 border box 切掉。</p>
+</div>
 <div class="footer" id="page-footer">Screenshot 测试页 · 页脚（wait=.footer 等待目标）</div>
+<script>
+// 700ms 后才把图片挂进 DOM：验证「截图时 DOM 才变化」不会被截成占位图
+setTimeout(() => {
+  const slot = document.getElementById('lazy-slot');
+  if (slot) {
+    slot.style.background = '#fff';
+    slot.textContent = '';
+    const img = document.createElement('img');
+    img.src = '/late.png';
+    img.style.width = '320px';
+    img.style.height = '160px';
+    img.style.display = 'block';
+    slot.appendChild(img);
+  }
+}, 700);
+
+// 紧跟 load 之后（120ms）就插图，用来验证默认的 DOM 观察窗口能兜住这种「一拍后变化」
+setTimeout(() => {
+  const slot = document.getElementById('lazy-fast-slot');
+  if (slot) {
+    slot.style.background = '#212529';
+    slot.textContent = 'FAST-STATE';
+  }
+}, 120);
+</script>
 </body>
 </html>

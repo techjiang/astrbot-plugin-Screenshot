@@ -23,7 +23,13 @@ from core.config import (  # noqa: E402
     suggest_url,
     viewport_for,
 )
-from core.image import detect_mime, normalise_scale, suggest_suffix  # noqa: E402
+from core.image import (  # noqa: E402
+    detect_mime,
+    normalise_scale,
+    plan_tiles,
+    suggest_suffix,
+)
+from core.session import ScreenshotSession  # noqa: E402
 
 FAILURES: list[str] = []
 
@@ -160,6 +166,40 @@ check("空指令不炸", shot("").mode, "full")
 check("只有空格不炸", shot("   ").mode, "full")
 check("超长参数串不炸", len(shot("example.com " + " ".join(f"hide=.c{i}" for i in range(200))).hide), 200)
 check("不配对的引号也能解析", shot('example.com "#main').selector != "", True)
+
+# ---------- 转义引号（选择器/水印里要写引号时的唯一表达方式） ----------
+
+check("引号内转义引号（选择器）",
+      shot(r'example.com selector="#a[title=\"x\"]"').selector, '#a[title="x"]')
+check("引号内转义引号（水印）",
+      shot(r'example.com watermark="a \" b"').watermark, 'a " b')
+check("转义反斜杠",
+      shot(r'example.com watermark="a\\b"').watermark, "a\\b")
+check("转义引号不污染其他参数",
+      shot(r'example.com watermark="a \" b"').selector, "")
+check("配对判断忽略转义引号",
+      shot(r'example.com watermark="a \" b"').watermark != "", True)
+
+# ---------- 分段规划（避免最后一条只剩几十像素） ----------
+
+def strips(height, budget):
+    return ScreenshotSession._plan_strips(height, budget)
+
+check("整页不超上限 → 单条",
+      strips(6000, 6000), [(0, 6000)])
+check("刚好超一点点 → 两条等长",
+      [p for _, p in strips(6001, 6000)], [3001, 3000])
+check("分段总高守恒",
+      sum(p for _, p in strips(84016, 6000)), 84016)
+check("最后一条不会退化成碎片",
+      min(p for _, p in strips(84016, 6000)) > 6000 // 2, True)
+check("分段起点连续",
+      [t for t, _ in strips(12400, 6000)], [0, 4134, 8268])
+check("零高页面不炸", strips(0, 6000), [(0, 0)])
+check("切片规划：总高守恒", sum(p for _, p in plan_tiles(84016, 6000)), 84016)
+check("切片规划：末片不退化",
+      min(p for _, p in plan_tiles(84016, 6000)) > 6000 // 2, True)
+check("切片规划：不超上限时单片", plan_tiles(5000, 6000), [(0, 5000)])
 
 print()
 if FAILURES:

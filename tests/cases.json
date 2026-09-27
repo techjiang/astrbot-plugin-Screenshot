@@ -327,5 +327,154 @@
         "value": "请提供网址"
       }
     ]
+  },
+  {
+    "label": "透明背景：PNG 保留 alpha 通道",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/alpha.html transparent",
+    "assert": [
+      {
+        "kind": "has_alpha",
+        "value": true
+      },
+      {
+        "kind": "corner_transparent",
+        "value": true
+      }
+    ]
+  },
+  {
+    "label": "默认（非 transparent）仍是白底 RGB",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/alpha.html",
+    "assert": [
+      {
+        "kind": "has_alpha",
+        "value": false
+      }
+    ]
+  },
+  {
+    "label": "透明背景元素截图不影响裁剪",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/alpha.html #tile transparent",
+    "assert": [
+      {
+        "kind": "has_alpha",
+        "value": true
+      },
+      {
+        "kind": "image_size",
+        "value": [
+          240,
+          120
+        ]
+      }
+    ]
+  },
+  {
+    "label": "元素截图 padding= 扩出留白（阴影不被切）",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/index.html #shadow-card padding=24",
+    "assert": [
+      {
+        "kind": "min_size",
+        "value": [
+          1550,
+          150
+        ]
+      }
+    ]
+  },
+  {
+    "label": "元素截图 + 水印：水印落在元素图内",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/index.html #shadow-card watermark=@bot padding=12",
+    "assert": [
+      {
+        "kind": "watermark_anywhere",
+        "value": true
+      }
+    ]
+  },
+  {
+    "label": "延迟挂载的图片：waitms 后不会截到占位图",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/index.html #lazy-slot waitms=900",
+    "assert": [
+      {
+        "kind": "color_present",
+        "value": [
+          255,
+          212,
+          59
+        ],
+        "min_pixels": 1500
+      },
+      {
+        "kind": "color_absent",
+        "value": [
+          222,
+          226,
+          230
+        ],
+        "max_pixels": 3000
+      }
+    ]
+  },
+  {
+    "label": "带引号属性的选择器：语法正确但无匹配 → 可读报错",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/index.html \"#main > p[class]\"",
+    "assert": [
+      {
+        "kind": "text_contains",
+        "value": "没有找到元素"
+      }
+    ],
+    "expect_image": false
+  },
+  {
+    "label": "max_height=0 本次不切片",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/index.html max_height=0",
+    "assert": [
+      {
+        "kind": "min_fragments",
+        "value": 1
+      }
+    ]
+  },
+  {
+    "label": "PDF 分页：切点落在段间而不是行中",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/index.html format=pdf",
+    "assert": [],
+    "expect_image": false
+  },
+  {
+    "label": "load 后一拍才变化的 DOM 能被默认观察窗口兜住",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/index.html #lazy-fast-slot",
+    "assert": [
+      {
+        "kind": "color_present",
+        "value": [
+          33,
+          37,
+          41
+        ],
+        "min_pixels": 1500
+      },
+      {
+        "kind": "color_absent",
+        "value": [
+          206,
+          212,
+          218
+        ],
+        "max_pixels": 1500
+      }
+    ]
   }
 ]

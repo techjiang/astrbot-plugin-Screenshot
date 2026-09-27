@@ -119,6 +119,7 @@ class ScreenshotSession:
         headers: dict[str, str] | None = None,
         max_concurrent: int = MAX_CONCURRENT_PAGES,
         max_dpr: float = 0.0,
+        render_watch_ms: int = 0,
     ) -> None:
         self.binary = binary
         self.flags = flags
@@ -129,6 +130,8 @@ class ScreenshotSession:
         # 于是一张 40000px 的图文页要拆成 9~12 段、逐段截图再拼接（实测 45s）。
         # 这里给「本来就要分段」的整页图降一档 DPR，少截几段、少拼几次。
         self.max_dpr = max(0.0, float(max_dpr or 0.0))
+        # 截图前观察 DOM 变化的窗口（毫秒）：0 表示用内置默认值
+        self.render_watch_ms = max(0, int(render_watch_ms or 0))
         self._process: BrowserProcess | None = None
         self._http: aiohttp.ClientSession | None = None
         self._lock = asyncio.Lock()
@@ -241,6 +244,27 @@ class ScreenshotSession:
                 headers={str(k): str(v) for k, v in self.headers.items()},
             )
 
+    @staticmethod
+    async def _apply_transparency(conn: CDPConnection, opts: ShotOptions) -> None:
+        """把默认背景刷成全透明，让 PNG 真正带上 alpha 通道。
+
+        踩过的坑：``Page.captureScreenshot`` 默认把「白底」烘焙进图里 —— 实测一个
+        ``body{background:transparent}`` 的页面，出图是 ``RGB`` 模式、空白处像素为
+        ``(255,255,255,255)``，无背景的 Logo/图标截出来全是白块。
+
+        ``omitBackground=True`` 单独传也没用；必须先用
+        ``Emulation.setDefaultBackgroundColorOverride`` 把默认背景设成 ``alpha=0``，
+        两层配合才会返回 ``RGBA``。
+        """
+        if opts.transparent:
+            await conn.send(
+                "Emulation.setDefaultBackgroundColorOverride",
+                color={"r": 0, "g": 0, "b": 0, "a": 0},
+            )
+        else:
+            with contextlib.suppress(CDPError):
+                await conn.send("Emulation.setDefaultBackgroundColorOverride")
+
     async def _apply_metrics(self, conn: CDPConnection, opts: ShotOptions) -> None:
         (width, height), preset_dpr, preset_mobile = viewport_for(opts.device)
         dpr = normalise_scale(preset_dpr * opts.scale)
@@ -255,6 +279,8 @@ class ScreenshotSession:
             screenHeight=height,
         )
         await conn.send("Emulation.setEmulatedMedia", **self._media_params(opts))
+        # setDocumentContent / 视口变更都会重置默认背景，这里每次都补齐
+        await self._apply_transparency(conn, opts)
 
     @staticmethod
     def _media_params(opts: ShotOptions) -> dict:
@@ -284,6 +310,7 @@ class ScreenshotSession:
             await self._wait_for_selector(conn, opts.wait_for, timeout)
         if opts.wait_ms:
             await asyncio.sleep(min(opts.wait_ms, 30000) / 1000)
+        # 观察窗口放在 waitms 之后：用户已经明确等过了，这里再兜一层「刚变化完」
         await self._wait_images(conn, timeout)
         if opts.hide:
             await self._apply_hide(conn, opts.hide)
@@ -292,13 +319,15 @@ class ScreenshotSession:
         if full_page:
             # 整页超限被分段时，水印要贴到「实际画面」的底部
             visible_height = await self._full_page_height(conn, opts)
+        rect = await self._element_rect(conn, opts) if opts.mode == "element" else None
         if opts.watermark:
             await self._apply_watermark(
-                conn, opts.watermark, full_page=full_page, visible_height=visible_height
+                conn, opts.watermark, full_page=full_page,
+                visible_height=visible_height, element=rect,
             )
 
         return await self._capture_with_retry(
-            conn, opts, full_page=full_page, visible_height=visible_height
+            conn, opts, full_page=full_page, visible_height=visible_height, element=rect
         )
 
     async def _render_html(self, conn: CDPConnection, html: str, opts: ShotOptions) -> bytes:
@@ -325,12 +354,14 @@ class ScreenshotSession:
         visible_height = None
         if full_page:
             visible_height = await self._full_page_height(conn, opts)
+        rect = await self._element_rect(conn, opts) if opts.mode == "element" else None
         if opts.watermark:
             await self._apply_watermark(
-                conn, opts.watermark, full_page=full_page, visible_height=visible_height
+                conn, opts.watermark, full_page=full_page,
+                visible_height=visible_height, element=rect,
             )
         return await self._capture_with_retry(
-            conn, opts, full_page=full_page, visible_height=visible_height
+            conn, opts, full_page=full_page, visible_height=visible_height, element=rect
         )
 
     async def _navigate(self, conn: CDPConnection, opts: ShotOptions, timeout: float) -> None:
@@ -384,36 +415,52 @@ class ScreenshotSession:
         return payload.get("value") if by_value else payload
 
     async def _wait_images(self, conn: CDPConnection, timeout: float) -> None:
-        """等页面里的图片解码完，避免截到半张图或懒加载占位。
+        """等图片解码完，并给「截图前才挂上去的图」留一个观察窗口。
 
-        只对「还没解码完」的图片挂监听，并且整段有上限：老实现给每张图都挂了
-        ``setTimeout(..., 2000)``，只要页面里有一张永远加载不完的图（外链 404、
-        被墙的埋点像素），整个 awaitPromise 就得陪它等满 2 秒。实测 cnb.cool 正是
-        如此，每张截图白付 2s。
+        踩过的坑（实测复现）：页面上常见 ``setTimeout(() => img.src = ...)`` 这类
+        延迟挂图。老实现只统计**调用那一刻**已在 DOM 里的图片 —— 实测一个 700ms 后
+        才插图的区块，元素截图拿到的是灰色占位「图片加载中…」，而同样的用例加上
+        ``waitms=1500`` 就正常。也就是说默认链路对「DOM 稍后才变化」完全没有容错。
+
+        这里改成两段式：
+
+        1. 观察窗口内用 MutationObserver 盯 ``<img>`` 的新增/``src`` 变更，
+           有新图进来就继续等它解码；
+        2. 最后再统一等所有未解码完的图片（有上限，不会被永不结束的图拖住）。
+
+        观察窗口默认 250ms（可用 ``render_watch_ms`` 调整）—— 比盲目
+        ``waitms=1500`` 便宜，又能兜住绝大多数「导航完成后一拍才插图」的写法。
         """
-        pending = await self._evaluate(
-            conn,
-            "Array.from(document.images).filter(img => "
-            "!(img.complete && img.naturalWidth > 0)).length",
-            by_value=True,
-        )
-        if not pending:
-            return
+        default_watch = max(250, min(int(NETWORK_QUIET_MS), 800))
+        watch_ms = self.render_watch_ms or default_watch
         expression = (
-            "Promise.race(["
-            " Promise.all(Array.from(document.images).map(img => "
-            "  (img.complete && img.naturalWidth > 0) ? 1 : "
-            "  new Promise(r => { img.addEventListener('load', () => r(1), {once:true});"
-            "   img.addEventListener('error', () => r(1), {once:true}); }))),"
-            " new Promise(r => setTimeout(() => r(1), 1500))"
-            "]).then(() => 1)"
+            "new Promise(resolve => {"
+            "  const pending = () => Array.from(document.images).filter("
+            "    img => !(img.complete && img.naturalWidth > 0));"
+            "  let timer = null;"
+            f"  const done = () => {{ if (timer) clearTimeout(timer);"
+            "    Promise.race(["
+            "      Promise.all(pending().map(img => new Promise(r => {"
+            "        img.addEventListener('load', () => r(1), {once:true});"
+            "        img.addEventListener('error', () => r(1), {once:true});"
+            "      }))),"
+            "      new Promise(r => setTimeout(() => r(1), 1200))"
+            "    ]).then(() => resolve(1)); };"
+            "  const observer = new MutationObserver(() => {"
+            f"    if (timer) clearTimeout(timer); timer = setTimeout(done, {watch_ms});"
+            "  });"
+            "  observer.observe(document.documentElement, {"
+            "    childList: true, subtree: true, attributes: true,"
+            "    attributeFilter: ['src', 'srcset', 'style', 'class'] });"
+            f"  timer = setTimeout(() => {{ observer.disconnect(); done(); }}, {watch_ms});"
+            "})"
         )
         with contextlib.suppress(CDPError):
             await conn.send(
                 "Runtime.evaluate",
                 expression=expression,
                 awaitPromise=True,
-                timeout=max(1.0, min(float(timeout), 10.0)),
+                timeout=max(2.0, min(float(timeout), 12.0)),
             )
 
     async def _wait_for_selector(self, conn: CDPConnection, selector: str, timeout: float) -> None:
@@ -486,7 +533,7 @@ class ScreenshotSession:
 
     async def _apply_watermark(
         self, conn: CDPConnection, text: str, *, full_page: bool,
-        visible_height: int | None = None,
+        visible_height: int | None = None, element: dict | None = None,
     ) -> None:
         """打右下角水印。
 
@@ -496,9 +543,30 @@ class ScreenshotSession:
 
         整页模式的实际画面底是 ``min(文档高, 可截取高度)``，所以：
         把水印挂到 ``<html>`` 上用绝对定位，``top`` 取这个值再上移一个水印高度。
+
+        元素模式又是另一种情况：裁剪框只覆盖元素自己那块，水印若还按「文档底」定位，
+        就会落到框外 —— 实测元素图里水印**整块消失**（140x37 的图里灰色胶囊占比 0）。
+        所以元素模式把水印贴着 ``element`` 的右下角放。
         """
         label = _js_string(text)
-        if full_page:
+        if element:
+            # 贴元素右下角：偏移量按元素尺寸夹取，元素很小时也不会把水印挤出裁剪框
+            element_left = element["left"]
+            element_top = element["top"]
+            element_right = element["right"]
+            element_bottom = element["bottom"]
+            offset_x = min(92.0, max(4.0, element["width"] * 0.06))
+            offset_y = 30.0
+            geometry = (
+                "box.style.position = 'absolute';"
+                f"box.style.left = Math.max({element_left}, "
+                f"{element_right} - {offset_x:.1f}) + 'px';"
+                f"box.style.top = Math.max({element_top}, "
+                f"{element_bottom} - {offset_y:.1f}) + 'px';"
+                "box.style.right = 'auto';"
+                "box.style.bottom = 'auto';"
+            )
+        elif full_page:
             limit = (
                 "Math.min(documentElement.scrollHeight, %d)" % int(visible_height)
                 if visible_height
@@ -543,6 +611,7 @@ class ScreenshotSession:
     async def _capture_with_retry(
         self, conn: CDPConnection, opts: ShotOptions, attempts: int = 3, *,
         full_page: bool = False, visible_height: int | None = None,
+        element: dict | None = None,
     ) -> bytes:
         """在遮罩/动画未停止时截到空白图的情况下自动重试。"""
         last: bytes | None = None
@@ -553,9 +622,9 @@ class ScreenshotSession:
                     # 长图模式下页面高度可能刚稳定，重贴一次让水印始终贴文档底部
                     await self._apply_watermark(
                         conn, opts.watermark, full_page=full_page,
-                        visible_height=visible_height,
+                        visible_height=visible_height, element=element,
                     )
-                data = await self._capture_by_mode(conn, opts)
+                data = await self._capture_by_mode(conn, opts, element=element)
             except CDPError:
                 # 连接层面的错误交给上层重启浏览器，不做原地重试
                 raise
@@ -611,9 +680,11 @@ class ScreenshotSession:
         """本次请求单张位图的 CSS 高度上限。"""
         return self._budget_for(self._requested_dpr(opts) if dpr is None else dpr)
 
-    async def _capture_by_mode(self, conn: CDPConnection, opts: ShotOptions) -> bytes:
+    async def _capture_by_mode(
+        self, conn: CDPConnection, opts: ShotOptions, element: dict | None = None
+    ) -> bytes:
         if opts.mode == "element":
-            return await self._capture_element(conn, opts)
+            return await self._capture_element(conn, opts, element=element)
         if opts.mode == "full":
             return await self._capture_full_page(conn, opts)
 
@@ -624,6 +695,7 @@ class ScreenshotSession:
             captureBeyondViewport=False,
             fromSurface=True,
             optimizeForSpeed=False,
+            **self._alpha_param(opts),
         )
         return decode_frame(result)
 
@@ -660,7 +732,7 @@ class ScreenshotSession:
         width, height = await self._document_size(conn, opts)
         if not width or not height:
             # 量不到文档尺寸时退化成可视区截图，别把整次请求废掉
-            return await self._capture_by_mode_plain(conn)
+            return await self._capture_by_mode_plain(conn, opts)
 
         dpr = self._effective_dpr(opts, height)
         if dpr != self._requested_dpr(opts):
@@ -676,13 +748,14 @@ class ScreenshotSession:
                      height, budget, -(-height // budget))
         return await self._shoot_strips(conn, width, height, budget, opts, dpr)
 
-    async def _capture_by_mode_plain(self, conn: CDPConnection) -> bytes:
+    async def _capture_by_mode_plain(self, conn: CDPConnection, opts: ShotOptions) -> bytes:
         result = await conn.send(
             "Page.captureScreenshot",
             timeout=60,
             format="png",
             captureBeyondViewport=False,
             fromSurface=True,
+            **self._alpha_param(opts),
         )
         return decode_frame(result)
 
@@ -700,11 +773,36 @@ class ScreenshotSession:
                 fromSurface=True,
                 optimizeForSpeed=False,
                 clip=clip,
+                **self._alpha_param(opts),
             )
         finally:
             # 视口要还原，否则后续在页面上做的量测与截图都会按被拉高的布局来
             await self._apply_metrics_quiet(conn, opts)
         return decode_frame(result)
+
+    @staticmethod
+    def _plan_strips(height: int, budget: int) -> list[tuple[int, int]]:
+        """把 ``height`` 切成若干条 ``(top, part)``，避免最后一条只剩几十像素。
+
+        踩过的坑：页面 84016px、budget 6000 时按整数分段，最后一条只有 16px。
+        后果不是「多一张图」这么简单 —— 水印贴在文档底 (``height-34``)，恰好落进
+        倒数第二条，于是断言/肉眼都会认为「水印跑到画面中部」；聊天里还会多出
+        一张 16px 的碎片图。
+
+        策略：条数按上取整定下后，把总高**均分**到这些条上，让每条尽量等长。
+        这样最后一条至少有 ``budget/2`` 以上的高度，水印与内容都落在同一条里。
+        """
+        if height <= budget:
+            return [(0, height)]
+        count = -(-height // budget)  # 上取整
+        part = -(-height // count)    # 均分后每条的高度，同样上取整
+        strips: list[tuple[int, int]] = []
+        top = 0
+        while top < height:
+            size = min(part, height - top)
+            strips.append((top, size))
+            top += size
+        return strips
 
     async def _shoot_strips(self, conn: CDPConnection, width: int, height: int,
                             budget: int, opts: ShotOptions, dpr: float) -> bytes:
@@ -723,8 +821,8 @@ class ScreenshotSession:
         frames: list[Image.Image] = []
         try:
             await conn.send("Emulation.setScrollbarsHidden", hidden=True)
-            for index, top in enumerate(range(0, height, budget)):
-                part = min(budget, height - top)
+            strips = self._plan_strips(height, budget)
+            for index, (top, part) in enumerate(strips):
                 await self._expand_viewport_to(conn, opts, part, dpr)
                 await conn.send(
                     "Runtime.evaluate",
@@ -741,17 +839,21 @@ class ScreenshotSession:
                     fromSurface=True,
                     optimizeForSpeed=False,
                     clip=clip,
+                    **self._alpha_param(opts),
                 )
                 with Image.open(io.BytesIO(decode_frame(result))) as frame:
-                    frames.append(frame.convert("RGB"))
+                    # 透明请求下保留 alpha，否则拼接这一步就把通道丢了
+                    frames.append(
+                        frame.convert("RGBA") if opts.transparent else frame.convert("RGB")
+                    )
                 logger.debug("分段截图 %d/%d（y=%s, 高 %s）",
-                             index + 1, -(-height // budget), top, part)
+                             index + 1, len(strips), top, part)
 
             canvas = Image.new(
-                "RGB",
+                "RGBA" if opts.transparent else "RGB",
                 (max(frame.width for frame in frames),
                  sum(frame.height for frame in frames)),
-                (255, 255, 255),
+                (0, 0, 0, 0) if opts.transparent else (255, 255, 255),
             )
             offset = 0
             for frame in frames:
@@ -773,8 +875,26 @@ class ScreenshotSession:
             await self._apply_metrics(conn, opts)
             await self._next_frame(conn)
 
-    async def _capture_element(self, conn: CDPConnection, opts: ShotOptions) -> bytes:
-        # 非法选择器要报「选择器不合法」，不能和「页面上没有这个元素」混为一谈
+    @staticmethod
+    def _alpha_param(opts: ShotOptions) -> dict:
+        """透明背景请求时给 captureScreenshot 带上 omitBackground。"""
+        return {"omitBackground": True} if opts.transparent else {}
+
+    async def _element_rect(self, conn: CDPConnection, opts: ShotOptions) -> dict:
+        """算出元素截图的裁剪矩形（视觉盒 + padding），并夹回页面范围内。
+
+        单独抽出来是因为**水印与裁剪必须共用同一个矩形**：水印要贴在元素图的右下角，
+        若两边各算一次、或水印仍按「文档底」定位，元素图里就会看不到水印。
+        """
+        object_id = await self._resolve_element(conn, opts)
+        try:
+            return await self._measure_element(conn, opts, object_id)
+        finally:
+            with contextlib.suppress(CDPError):
+                await conn.send("Runtime.releaseObject", timeout=5, objectId=object_id)
+
+    async def _resolve_element(self, conn: CDPConnection, opts: ShotOptions) -> str:
+        """把选择器解析成 DOM 对象；顺带区分「选择器非法」与「元素不存在」。"""
         expression = (
             "(() => {"
             "  try { document.querySelector(%s); return 'ok' }"
@@ -786,55 +906,107 @@ class ScreenshotSession:
             raise ScreenshotError(f"选择器不合法：{_short(opts.selector, 60)}")
 
         payload = await self._evaluate(
-            conn,
-            "document.querySelector(%s)" % _js_string(opts.selector),
+            conn, "document.querySelector(%s)" % _js_string(opts.selector)
         )
         object_id = payload.get("objectId")
         if not object_id:
             raise ScreenshotError(f"页面中没有找到元素：{_short(opts.selector, 60)}")
+        return object_id
 
+    async def _measure_element(
+        self, conn: CDPConnection, opts: ShotOptions, object_id: str
+    ) -> dict:
         try:
-            try:
-                await conn.send("DOM.enable")
-                box = await conn.send("DOM.getBoxModel", timeout=10, objectId=object_id)
-            except CDPError as exc:
-                # 元素在页面上、但拿不到盒模型：隐藏 / display:none / 被移除
-                raise ScreenshotError(
-                    f"元素不可见或不可截取：{_short(opts.selector, 60)}"
-                ) from exc
+            await conn.send("DOM.enable")
+            box = await conn.send("DOM.getBoxModel", timeout=10, objectId=object_id)
+        except CDPError as exc:
+            # 元素在页面上、但拿不到盒模型：隐藏 / display:none / 被移除
+            raise ScreenshotError(
+                f"元素不可见或不可截取：{_short(opts.selector, 60)}"
+            ) from exc
 
-            quad = box["model"]["border"]
-            left, top = quad[0], quad[1]
-            right, bottom = quad[4], quad[5]
-            width, height = right - left, bottom - top
-            if width <= 0 or height <= 0:
-                raise ScreenshotError(f"元素尺寸为 0，无法截图：{_short(opts.selector, 60)}")
-            # 元素也可能高过单张上限（长列表、整篇文章），夹到上限而不是把
-            # 一个 6 万像素的 clip 甩给渲染进程 —— 那样只会拿到半张空白
-            budget = self._capture_budget(opts)
-            if height > budget:
-                logger.info(
-                    "元素高 %spx 超过单张上限 %spx，已裁到 %spx",
-                    int(height), budget, budget,
-                )
-                height = budget
-            if left < 0:
-                width, left = max(1.0, width + left), 0.0
-            if top < 0:
-                height, top = max(1.0, height + top), 0.0
+        quads = await self._element_visual_quads(conn, box, object_id)
+        left = min(q[0] for q in quads)
+        top = min(q[1] for q in quads)
+        right = max(q[2] for q in quads)
+        bottom = max(q[3] for q in quads)
+        # padding= 让用户给截图留白（阴影/描边/圆角光晕会被 border box 切掉）
+        if opts.padding:
+            left -= opts.padding
+            top -= opts.padding
+            right += opts.padding
+            bottom += opts.padding
 
-            result = await conn.send(
-                "Page.captureScreenshot",
-                timeout=120,
-                format="png",
-                captureBeyondViewport=True,
-                fromSurface=True,
-                clip={"x": left, "y": top, "width": width, "height": height, "scale": 1},
+        # 夹回页面范围：clip 的负坐标会被渲染进程当成 0，图会整体错位
+        page_w, page_h = await self._document_size(conn, opts)
+        left = min(max(0.0, left), float(page_w))
+        top = min(max(0.0, top), float(max(page_h, 1)))
+        right = min(max(left + 1.0, right), float(page_w))
+        bottom = min(max(top + 1.0, bottom), float(max(page_h, top + 1)))
+
+        width, height = right - left, bottom - top
+        if width <= 0 or height <= 0:
+            raise ScreenshotError(f"元素尺寸为 0，无法截图：{_short(opts.selector, 60)}")
+        # 元素也可能高过单张上限（长列表、整篇文章），夹到上限而不是把
+        # 一个 6 万像素的 clip 甩给渲染进程 —— 那样只会拿到半张空白
+        budget = self._capture_budget(opts)
+        if height > budget:
+            logger.info(
+                "元素高 %spx 超过单张上限 %spx，已裁到 %spx",
+                int(height), budget, budget,
             )
-            return decode_frame(result)
-        finally:
-            with contextlib.suppress(CDPError):
-                await conn.send("Runtime.releaseObject", timeout=5, objectId=object_id)
+            height = float(budget)
+        return {"left": left, "top": top, "right": left + width,
+                "bottom": top + height, "width": width, "height": height}
+
+    async def _capture_element(
+        self, conn: CDPConnection, opts: ShotOptions, *, element: dict | None = None
+    ) -> bytes:
+        rect = element or await self._element_rect(conn, opts)
+        result = await conn.send(
+            "Page.captureScreenshot",
+            timeout=120,
+            format="png",
+            captureBeyondViewport=True,
+            fromSurface=True,
+            clip={
+                "x": rect["left"], "y": rect["top"],
+                "width": max(1.0, rect["width"]),
+                "height": max(1.0, rect["height"]),
+                "scale": 1,
+            },
+            **self._alpha_param(opts),
+        )
+        return decode_frame(result)
+
+    async def _element_visual_quads(
+        self, conn: CDPConnection, box: dict, object_id: str
+    ) -> list[tuple[float, float, float, float]]:
+        """元素的「视觉包围盒」，而不是 DOM 的 border box。
+
+        踩过的坑：``DOM.getBoxModel`` 给的是 border box，只取它当裁剪范围时，
+        ``box-shadow``、``outline``、``border-radius`` 的圆角光晕全都在框外 ——
+        实测一个 300x120、带 40px 红色外阴影 + 6px 绿色 outline 的卡片，截出来
+        阴影与描边**整圈消失**，圆角被切成硬边。
+
+        正解是取 ``DOM.getContentQuads`` 的**全部四边形**（元素被折行或被拆成多块时
+        会有多个 quad），再并上 border box，取并集作为裁剪范围。
+        """
+        spans: list[tuple[float, float, float, float]] = []
+        border = box.get("model", {}).get("border") or []
+        if len(border) >= 8:
+            spans.append((border[0], border[1], border[4], border[5]))
+        try:
+            result = await conn.send(
+                "DOM.getContentQuads", timeout=10, objectId=object_id
+            )
+        except (CDPError, KeyError, TypeError):
+            result = {}
+        for quad in result.get("quads") or []:
+            if len(quad) >= 8:
+                xs, ys = quad[0::2], quad[1::2]
+                spans.append((min(xs), min(ys), max(xs), max(ys)))
+        return spans or [(0.0, 0.0, 0.0, 0.0)]
 
     async def _main_frame(self, conn: CDPConnection) -> str:
         tree = await conn.send("Page.getFrameTree")

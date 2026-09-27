@@ -6,3 +6,4 @@ data/
 *.png
 *.jpg
 !assets/*.png
+!tests/*_asset.png
