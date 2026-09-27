@@ -197,18 +197,32 @@ class ScreenshotSession:
         await self._wait_images(conn, timeout)
         if opts.hide:
             await self._apply_hide(conn, opts.hide)
-        if opts.mode == "full":
+        full_page = opts.mode == "full"
+        visible_height = None
+        if full_page:
             await self._pin_fixed_layers(conn)
+            # 先量出真正会被截进画面的高度：整页超限被裁时，
+            # 水印要贴到「可截取范围」的底部，而不是文档真实的底部。
+            visible_height = await self._full_page_height(conn, opts)
         if opts.watermark:
-            await self._apply_watermark(conn, opts.watermark)
+            # 水印必须在 _pin_fixed_layers 之后打，否则会被当成 fixed 元素钉回页首
+            await self._apply_watermark(
+                conn, opts.watermark, full_page=full_page, visible_height=visible_height
+            )
 
-        return await self._capture_with_retry(conn, opts)
+        return await self._capture_with_retry(
+            conn, opts, full_page=full_page, visible_height=visible_height
+        )
 
     async def _render_html(self, conn: CDPConnection, html: str, opts: ShotOptions) -> bytes:
         await self._prepare(conn, opts)
         await self._apply_metrics(conn, opts)
         await conn.send("Page.setDocumentContent", frameId=await self._main_frame(conn),
                         html=html)
+        # 踩过的坑：Page.setDocumentContent 会重建渲染器，丢掉 device metrics，
+        # 页面便回落到 980px 宽的移动端默认视口，且浏览器会在画面顶部画出原生标题栏
+        # （中文标题渲染成「????」豆腐块）。这里重发一次 metrics，把视口钉回来。
+        await self._apply_metrics(conn, opts)
         # setDocumentContent 不触发 load 事件，用 readyState 轮询代替
         deadline = asyncio.get_running_loop().time() + max(opts.timeout_ms, 1000) / 1000
         while asyncio.get_running_loop().time() < deadline:
@@ -220,11 +234,18 @@ class ScreenshotSession:
         await asyncio.sleep(max(opts.wait_ms, 120) / 1000)
         if opts.hide:
             await self._apply_hide(conn, opts.hide)
-        if opts.mode == "full":
+        full_page = opts.mode == "full"
+        visible_height = None
+        if full_page:
             await self._pin_fixed_layers(conn)
+            visible_height = await self._full_page_height(conn, opts)
         if opts.watermark:
-            await self._apply_watermark(conn, opts.watermark)
-        return await self._capture_with_retry(conn, opts)
+            await self._apply_watermark(
+                conn, opts.watermark, full_page=full_page, visible_height=visible_height
+            )
+        return await self._capture_with_retry(
+            conn, opts, full_page=full_page, visible_height=visible_height
+        )
 
     async def _navigate(self, conn: CDPConnection, opts: ShotOptions, timeout: float) -> None:
         loaded = conn.subscribe("Page.loadEventFired")
@@ -357,31 +378,78 @@ class ScreenshotSession:
                 timeout=10,
             )
 
-    async def _apply_watermark(self, conn: CDPConnection, text: str) -> None:
-        await conn.send("Runtime.evaluate", expression=(
+    async def _apply_watermark(
+        self, conn: CDPConnection, text: str, *, full_page: bool,
+        visible_height: int | None = None,
+    ) -> None:
+        """打右下角水印。
+
+        踩过的坑：水印用 ``position:fixed`` 时只会贴**视口**底部，整页长图里
+        它就跑到画面正中盖住正文；改 ``absolute`` 也不行——页面没有定位祖先时
+        ``absolute`` 依然相对初始包含块（视口）解析，``top`` 设成文档高度会把
+        水印直接挤出画面。正解：整页模式把水印挂到 ``<html>`` 上，并用
+        ``documentElement.scrollHeight`` 显式算出文档底部坐标。
+        """
+        label = _js_string(text)
+        if full_page:
+            # 整页被 MAX_CAPTURE_HEIGHT 截断时，文档底部在画面之外；
+            # 这时把水印贴到实际可截取范围的底部，避免打完水印却看不见。
+            limit = (
+                "Math.min(documentElement.scrollHeight, %d)" % int(visible_height)
+                if visible_height
+                else "documentElement.scrollHeight"
+            )
+            geometry = (
+                "box.style.position = 'absolute';"
+                f"box.style.top = Math.max(0, {limit} - 34) + 'px';"
+                "box.style.bottom = 'auto';"
+            )
+        else:
+            geometry = (
+                "box.style.position = 'fixed';"
+                "box.style.bottom = '10px';"
+                "box.style.top = 'auto';"
+            )
+        script = (
             "(() => {"
+            "  const documentElement = document.documentElement;"
             "  const id = '__astrbot_shot_mark__';"
-            "  if (document.getElementById(id)) return;"
+            "  const old = document.getElementById(id);"
+            "  if (old) old.remove();"
             "  const box = document.createElement('div');"
             "  box.id = id;"
-            "  box.textContent = %s;"
-            "  box.style.cssText = 'position:fixed;right:12px;bottom:10px;z-index:2147483647;"
-            "font:12px/1.6 sans-serif;color:#fff;background:rgba(0,0,0,.45);"
-            "padding:2px 10px;border-radius:10px;pointer-events:none';"
-            "  (document.body || document.documentElement).appendChild(box);"
+            f"  box.textContent = {label};"
+            "  box.style.right = '12px';"
+            "  box.style.zIndex = '2147483647';"
+            "  box.style.font = '12px/1.6 sans-serif';"
+            "  box.style.color = '#fff';"
+            "  box.style.background = 'rgba(0,0,0,.45)';"
+            "  box.style.padding = '2px 10px';"
+            "  box.style.borderRadius = '10px';"
+            "  box.style.pointerEvents = 'none';"
+            f"  {geometry}"
+            "  documentElement.appendChild(box);"
             "})()"
-        ) % _js_string(text))
+        )
+        await conn.send("Runtime.evaluate", expression=script)
 
     # ---------- 截图 ----------
 
     async def _capture_with_retry(
-        self, conn: CDPConnection, opts: ShotOptions, attempts: int = 3
+        self, conn: CDPConnection, opts: ShotOptions, attempts: int = 3, *,
+        full_page: bool = False, visible_height: int | None = None,
     ) -> bytes:
         """在遮罩/动画未停止时截到空白图的情况下自动重试。"""
         last: bytes | None = None
         delay = 0.5
         for index in range(max(1, attempts)):
             try:
+                if opts.watermark:
+                    # 长图模式下页面高度可能刚稳定，重贴一次让水印始终贴文档底部
+                    await self._apply_watermark(
+                        conn, opts.watermark, full_page=full_page,
+                        visible_height=visible_height,
+                    )
                 data = await self._capture_by_mode(conn, opts)
             except CDPError:
                 # 连接层面的错误交给上层重启浏览器，不做原地重试
@@ -395,6 +463,25 @@ class ScreenshotSession:
                 delay = min(delay * 2, 2.0)
         return last or b""
 
+    async def _full_page_height(self, conn: CDPConnection, opts: ShotOptions) -> int:
+        """整页截图时可截取的 CSS 高度（已按 DPR 折算 MAX_CAPTURE_HEIGHT 上限）。"""
+        metrics = await conn.send("Page.getLayoutMetrics")
+        css = metrics.get("cssContentSize") or metrics.get("contentSize") or {}
+        height = int(css.get("height", 0) or 0)
+        _, preset_dpr, _ = viewport_for(opts.device)
+        dpr = normalise_scale(preset_dpr * opts.scale)
+        # MAX_CAPTURE_HEIGHT 是 CSS 像素上限，而 clip 会再乘 deviceScaleFactor 出图。
+        # 手机预设（dpr=3）下 20000 CSS 会变成 60000px 的位图，CDP 给不出那么多像素，
+        # 超出部分整片是纯色空白。这里按实际 DPR 把 CSS 上限折算回去。
+        css_limit = max(1000, int(MAX_CAPTURE_HEIGHT / max(dpr, 0.2)))
+        if height > css_limit:
+            logger.info(
+                "整页高度 %spx（DPR %.2f）超过单张上限，已裁到 %spx",
+                height, dpr, css_limit,
+            )
+            height = css_limit
+        return height
+
     async def _capture_by_mode(self, conn: CDPConnection, opts: ShotOptions) -> bytes:
         if opts.mode == "element":
             return await self._capture_element(conn, opts)
@@ -404,11 +491,8 @@ class ScreenshotSession:
         if full_page:
             metrics = await conn.send("Page.getLayoutMetrics")
             css = metrics.get("cssContentSize") or metrics.get("contentSize") or {}
-            height = int(css.get("height", 0) or 0)
             width = int(css.get("width", 0) or 0)
-            if height > MAX_CAPTURE_HEIGHT:
-                logger.info("整页高度 %spx 超过上限，已裁到 %spx", height, MAX_CAPTURE_HEIGHT)
-                height = MAX_CAPTURE_HEIGHT
+            height = await self._full_page_height(conn, opts)
             if height and width:
                 clip = {"x": 0, "y": 0, "width": width, "height": height, "scale": 1}
             else:

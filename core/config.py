@@ -321,7 +321,7 @@ def viewport_for(device: str) -> tuple[tuple[int, int], float, bool]:
     if preset:
         return preset["viewport"], preset["dpr"], bool(preset.get("mobile"))
 
-    match = _VIEWPORT_RE.match(device)
+    match = _VIEWPORT_RE.match(device.strip().lower())
     if match:
         return (int(match.group(1)), int(match.group(2))), 2, False
 

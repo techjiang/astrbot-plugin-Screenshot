@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from pathlib import Path
 
 from astrbot.api import AstrBotConfig
@@ -179,24 +180,39 @@ class ScreenshotPlugin(Star):
         out_dir = self._cache_dir()
         session_key = re.sub(r"\W+", "_", str(event.get_session_id())) or "session"
         paths: list[Path] = []
+        stamp = f"{time.time_ns():x}"
         for index, data in enumerate(payloads):
             suffix = suggest_suffix(data)
-            target = out_dir / f"{session_key}_{index}{suffix}"
+            target = out_dir / f"{session_key}_{stamp}_{index}{suffix}"
             target.write_bytes(data)
             paths.append(target)
-        self._cleanup_cache(out_dir, keep=CACHE_KEEP)
+        # 本次产物列入保护名单，避免同会话连续截图时被清理误删
+        self._cleanup_cache(out_dir, keep=CACHE_KEEP, protect=set(paths))
         return paths
 
-    def _cleanup_cache(self, out_dir: Path | None = None, *, keep: int = CACHE_KEEP) -> None:
-        """按修改时间清理历史缓存，失败不影响主流程。"""
+    def _cleanup_cache(
+        self,
+        out_dir: Path | None = None,
+        *,
+        keep: int = CACHE_KEEP,
+        protect: set[Path] | None = None,
+    ) -> None:
+        """按修改时间清理历史缓存，失败不影响主流程。
+
+        ``protect`` 里的文件（通常是本次刚写出的产物）永不被删：
+        调用方拿到的是路径，若刚写完就被清掉，会读到不存在的文件。
+        """
         try:
             directory = out_dir or self._cache_dir()
+            protected = protect or set()
             files = sorted(
                 (p for p in directory.iterdir() if p.is_file()),
                 key=lambda p: p.stat().st_mtime,
                 reverse=True,
             )
             for stale in files[keep:]:
+                if stale in protected:
+                    continue
                 stale.unlink(missing_ok=True)
         except Exception as exc:  # 清理是尽力而为
             logger.debug("缓存清理跳过：%s", exc)

@@ -1,0 +1,176 @@
+[
+  {
+    "label": "整页长图（自动切片）",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/index.html",
+    "assert": [
+      {
+        "kind": "min_fragments",
+        "value": 2
+      }
+    ]
+  },
+  {
+    "label": "可视区",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/index.html viewport",
+    "assert": [
+      {
+        "kind": "image_size",
+        "value": [
+          1600,
+          1000
+        ]
+      }
+    ]
+  },
+  {
+    "label": "元素截图（裸选择器）",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/index.html #tile-b"
+  },
+  {
+    "label": "元素截图（专用指令）",
+    "handler": "element_screenshot",
+    "text": "/元素截图 http://127.0.0.1:{PORT}/index.html #main"
+  },
+  {
+    "label": "选择器含空格与引号",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/index.html \"#main > p\""
+  },
+  {
+    "label": "HTML 渲染（视口不被 setDocumentContent 重置）",
+    "handler": "render_screenshot",
+    "text": "/渲染截图 <div style=\"padding:24px\"><h1>渲染成功 ✅</h1><p>中文与emoji混排 🚀</p></div>",
+    "assert": [
+      {
+        "kind": "image_size",
+        "value": [
+          1600,
+          1000
+        ]
+      }
+    ]
+  },
+  {
+    "label": "iphone × scale=2 × dark × hide × watermark",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/index.html iphone scale=2 dark hide=.ad watermark=@bot",
+    "assert": [
+      {
+        "kind": "watermark_at_bottom",
+        "within": 400
+      },
+      {
+        "kind": "no_pure_color_block",
+        "value": [
+          255,
+          107,
+          107
+        ],
+        "max_run": 120
+      }
+    ]
+  },
+  {
+    "label": "format=jpeg",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/index.html format=jpeg quality=80"
+  },
+  {
+    "label": "format=pdf 多页",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/index.html format=pdf",
+    "expect_image": false,
+    "assert": [
+      {
+        "kind": "text_contains",
+        "value": ".pdf"
+      }
+    ]
+  },
+  {
+    "label": "等待元素 + 固定延迟",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/index.html wait=.footer waitms=300 viewport"
+  },
+  {
+    "label": "越界参数被夹取",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/index.html scale=99 waitms=-5 timeout=1 viewport"
+  },
+  {
+    "label": "直接指定视口 1440x900",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/index.html 1440x900 viewport"
+  },
+  {
+    "label": "设备中文别名",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/index.html 手机 viewport"
+  },
+  {
+    "label": "整页 + 隐藏固定浮层",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/index.html hide=.ad,.topbar watermark=TechSauce",
+    "assert": [
+      {
+        "kind": "watermark_at_bottom",
+        "within": 400
+      },
+      {
+        "kind": "no_pure_color_block",
+        "value": [
+          255,
+          107,
+          107
+        ],
+        "max_run": 120
+      },
+      {
+        "kind": "no_pure_color_block",
+        "value": [
+          59,
+          91,
+          219
+        ],
+        "max_run": 120
+      }
+    ]
+  },
+  {
+    "label": "jpeg 长图切片",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/index.html format=jpeg max_height=3000"
+  },
+  {
+    "label": "暗色主题",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/sub.html dark viewport"
+  },
+  {
+    "label": "元素不存在（可读报错）",
+    "handler": "element_screenshot",
+    "text": "/元素截图 http://127.0.0.1:{PORT}/index.html #no-such-el",
+    "expect_image": false,
+    "assert": [
+      {
+        "kind": "text_contains",
+        "value": "没有找到元素"
+      }
+    ]
+  },
+  {
+    "label": "域名解析失败（可读报错）",
+    "handler": "screenshot",
+    "text": "/截图 http://this-host-does-not-exist-xyz.invalid/",
+    "expect_image": false,
+    "assert": [
+      {
+        "kind": "text_contains",
+        "value": "无法打开页面"
+      }
+    ]
+  }
+]

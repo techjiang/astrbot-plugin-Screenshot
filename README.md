@@ -157,6 +157,34 @@ core/image.py        长图切片、重编码、PDF 封装、HTML 包装
 | QQ 群 | 291974598 |
 | QQ 群② | 474819022 |
 
+## 实测记录
+
+仓库带了一套端到端实测脚本 `tests/e2e_astrbot.py`，用 AstrBot 真实的
+`PluginManager` 加载插件、构造 `AstrMessageEvent`，再驱动真 Chromium 出图，
+并对产物做像素级断言（切片数、图片尺寸、水印是否贴在图底、色块是否真被隐藏）。
+
+```bash
+# 需要系统里已装 chromium；ASTRBOT_ROOT 指向一个 AstrBot 数据目录
+ASTRBOT_ROOT=/tmp/ab SHOT_SITE_DIR=tests python3 tests/e2e_astrbot.py
+```
+
+当前基线：**AstrBot 4.14.6 + Chromium 153 headless，18/18 用例通过。**
+
+### 实测中修掉的缺陷
+
+这些都是先复现、再修、再回归验证的：
+
+| 现象 | 根因 |
+| --- | --- |
+| `position:fixed` 元素在最底部又出现一次 | `captureBeyondViewport` 会把 fixed 元素渲染到长图末尾，全页截图前需钉回页首 |
+| 同一会话连续截图互相覆盖 | 缓存文件名只用 `session_序号`，`_persist` 每次写同一路径 |
+| 刚写出的产物可能被缓存清理删掉 | `_cleanup_cache` 按数量裁剪时不认识「本次产物」 |
+| HTML 渲染出的图顶部多一条乱码标题栏 | `Page.setDocumentContent` 会重建渲染器并丢掉 device metrics，视口回落、浏览器画出原生标题栏 |
+| 整页长图里水印跑到画面正中并盖住正文 | 水印用 `position:fixed`，只贴视口底而非文档底 |
+| 打水印后整页图里找不到水印 | 改 `absolute` 后仍相对初始包含块解析（页面无定位祖先），`top:文档高度` 被挤出画面 |
+| 手机预设下长图末尾整片纯白 | `MAX_CAPTURE_HEIGHT` 按 CSS 像素限制，`dpr=3` 时实际位图高度翻 3 倍，超出部分 CDP 只返回空白 |
+| `hide=.ad` 生效但长图仍有色块 | 其实是 emoji 同色像素干扰了肉眼判断；后由像素级断言区分「实心色块」与「零散笔画」 |
+
 ## License
 
 MIT
