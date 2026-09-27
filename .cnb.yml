@@ -9,6 +9,8 @@ main:
           script: python -m compileall -q .
         - name: 指令解析回归
           script: python tests/test_parse.py
+        - name: 文档一致性检查
+          script: python tests/test_docs.py
 
 $:
   tag_push:

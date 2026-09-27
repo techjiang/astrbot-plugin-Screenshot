@@ -247,6 +247,7 @@ HELP_TEXT = """Screenshot · CDP 直驱截图
 /截图 <网址> format=pdf           输出 PDF，适合超长页面
 /元素截图 <网址> <CSS选择器>      元素截图
 /渲染截图 <html>...               渲染 HTML 片段
+/截图帮助                         查看用法
 
 参数：wait=选择器  waitms=毫秒  hide=.广告,.浮层  watermark=水印
       timeout=毫秒  padding=像素  transparent  max_height=像素(0=不切)
