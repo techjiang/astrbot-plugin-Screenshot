@@ -1,0 +1,21 @@
+main:
+  push:
+    - stages:
+        - name: 语法检查
+          script: |
+            python -m compileall -q .
+            echo "compileall done"
+
+$:
+  tag_push:
+    - stages:
+        - name: 自动打标签
+          image: cnbcool/git-auto-tag:latest
+          settings:
+            tagFormat: v\${version}
+            branch: $CNB_BRANCH
+            repoUrlHttps: $CNB_REPO_URL_HTTPS
+          exports:
+            tag: NEW_TAG
+        - name: 展示标签
+          script: echo "$NEW_TAG"

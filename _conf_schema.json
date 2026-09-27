@@ -1,0 +1,37 @@
+{
+  "browser_path": {
+    "type": "string",
+    "description": "Chromium/Chrome 可执行文件路径，留空自动探测",
+    "default": ""
+  },
+  "launch_flags": {
+    "type": "list",
+    "description": "追加到浏览器启动命令的参数",
+    "default": ["--no-sandbox", "--disable-dev-shm-usage"]
+  },
+  "max_height": {
+    "type": "int",
+    "description": "单张图片最大高度，超出自动切片，0 表示不切",
+    "default": 6000
+  },
+  "device": {
+    "type": "string",
+    "description": "默认设备预设",
+    "default": "desktop"
+  },
+  "full_page": {
+    "type": "bool",
+    "description": "默认是否整页截图",
+    "default": true
+  },
+  "dark": {
+    "type": "bool",
+    "description": "默认是否使用暗色模式",
+    "default": false
+  },
+  "timeout_ms": {
+    "type": "int",
+    "description": "默认导航超时（毫秒）",
+    "default": 20000
+  }
+}
