@@ -82,6 +82,18 @@ def main() -> int:
     check("README 指向开发文档", "docs/DEVELOPMENT.md" in readme)
     check("README 指向 FAQ", "docs/FAQ.md" in readme)
 
+    # 文档里的图片/相对链接必须真实存在。
+    # 线上踩过一次：README 里引用的仓库内相对路径写错、以及外链在平台上直接 404，
+    # 结果「Logo 不显示」被当成插件问题排查了半天。仓库内的引用必须能静态验证。
+    for doc in (readme, usage, (ROOT / "docs" / "DEVELOPMENT.md").read_text(encoding="utf-8"),
+                (ROOT / "docs" / "FAQ.md").read_text(encoding="utf-8"),
+                (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")):
+        for ref in sorted(set(re.findall(r'(?:src|href)="((?!https?://|#|mailto:)[^"]+)"', doc))):
+            target = ref.split("#", 1)[0]
+            if not target:
+                continue
+            check(f"文档引用的仓库内路径存在 {ref}", (ROOT / target).exists())
+
     if FAILURES:
         print(f"\n=== 文档检查：{len(FAILURES)} 项不一致 ===")
         for item in FAILURES:

@@ -10,7 +10,7 @@
 
 说 Chrome DevTools Protocol，不说 Playwright / Selenium / html2image
 
-[![version](https://cnb.cool/asoe/TechSauce/astrbot-plugin-Screenshot/-/badge/release.svg)](https://cnb.cool/asoe/TechSauce/astrbot-plugin-Screenshot)
+[![version](https://img.shields.io/badge/version-v0.5.0-2ea44f)](https://github.com/techjiang/astrbot-plugin-Screenshot/releases)
 ![AstrBot](https://img.shields.io/badge/AstrBot-%3E%3D4.0.0-6C5CE7)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB)
 ![License](https://img.shields.io/badge/License-MIT-green)

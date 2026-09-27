@@ -100,6 +100,24 @@ ok("version 符合 PEP 440",
 repo = meta.get("repo", "")
 ok("repo 指向 GitHub 仓库",
    bool(re.match(r"^https://github\.com/[\w.-]+/[\w.-]+/?$", repo)), repo)
+# 商店会把 repo 当成安装源直接用，指向不存在的仓库等于装不上。
+# 这条只能做静态的形状校验：仓库是否真的存在需要联网，不适合放进零依赖自检。
+# 线上踩过一次（下划线 vs 连字符写法不同、链接 404），所以这里至少拦住
+# 「占位符 / 本地地址」这类明显写错，并把「下划线⇄连字符、大小写」归一后再比一次。
+ok("repo 不是本地占位/示例地址",
+   not re.search(r"(your[-_]?name|example\.com|localhost|127\.0\.0\.1|<[^>]+>)", repo, re.I), repo)
+_owner_repo = re.fullmatch(r"https://github\.com/([\w.-]+)/([\w.-]+?)/?", repo or "")
+ok("repo 拆得出 owner/repo", bool(_owner_repo), repo)
+if _owner_repo:
+    _owner, _repo_name = _owner_repo.groups()
+    # 仓库名合法字符：字母数字、点、下划线、连字符，且不能以点开头/结尾
+    ok("repo 仓库名合法",
+       bool(re.fullmatch(r"(?![.])[\w.-]+(?<![.])", _repo_name)), _repo_name)
+    # GitHub 习惯用连字符（astrbot-plugin-Screenshot），插件目录约定用下划线
+    # （astrbot_plugin_screenshot），两者归一后应当同源。
+    ok("repo 仓库名与插件名同源（下划线⇄连字符、大小写不计）",
+       _repo_name.lower().replace("-", "_") == EXPECTED_NAME,
+       f"{_repo_name} vs {EXPECTED_NAME}")
 
 # ---------- 4) AstrBot 版本约束 ----------
 

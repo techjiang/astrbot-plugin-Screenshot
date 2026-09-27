@@ -14,7 +14,7 @@ desc: |
   /渲染截图 <HTML片段>
 version: 0.5.0
 author: 科技酱
-repo: https://github.com/techjiang/astrbot_plugin_screenshot
+repo: https://github.com/techjiang/astrbot-plugin-Screenshot
 astrbot_version: ">=4.0.0"
 support_platforms:
   - aiocqhttp
