@@ -337,11 +337,20 @@ SHOT_BROWSER=$(which chromium) python3 tests/e2e_astrbot.py
 
 ### 7.4 CI
 
-`.cnb.yml` 已配置：
+`.cnb.yml` 已配置（Pipeline 级固定 `python:3.11-slim` 镜像）：
 
-- `main` 分支 push：`python -m compileall -q .` 语法检查
-- PR：语法检查 + `python tests/test_parse.py` 解析回归 + `python tests/test_docs.py` 文档一致性检查
+- `main` 分支 push：`python3 -m compileall -q .` 语法检查 + `python3 tests/test_metadata.py`
+- PR：语法检查 + `python3 tests/test_parse.py` 解析回归 + `python3 tests/test_docs.py` 文档一致性检查 + `python3 tests/test_metadata.py`
 - tag push：自动打标签
+
+> **踩过的坑**：默认构建镜像里只有 `python3`，没有 `python` 这个软链。
+> 脚本里写 `python ...` 会以 127（command not found）直接失败，5 秒就红。
+> 所以流水线脚本一律用 `python3`，并且显式指定带 Python 的镜像，
+> 不依赖构建机默认 PATH。
+>
+> `tests/test_metadata.py` 的图像断言需要 Pillow，未装会**静默跳过**
+> （打 `[SKIP] 未安装 Pillow`，退出码仍是 0）——等于新增的「缩到 64px 糊不糊」
+> 这类断言白写。所以 CI 里 metadata 自检前先 `pip install -r requirements.txt`。
 
 `tests/test_docs.py` 会核对 schema 里的配置键、`_apply_kv` 认识的参数 key 与
 `main.HELP_TEXT` 是否都出现在 README / 使用文档里，改参数忘了改文档会被它拦下。
@@ -377,7 +386,7 @@ SHOT_BROWSER=$(which chromium) python3 tests/e2e_astrbot.py
 
 ## 10. 贡献约定
 
-- 提交前跑 `python -m compileall -q .`，别让语法检查挂掉
+- 提交前跑 `python3 -m compileall -q .`，别让语法检查挂掉
 - 每个渲染缺陷都配一条 e2e 用例，写清「旧代码为什么错、新代码为什么对」
 - 代码注释写**为什么**，不写「这行在赋值」
 - 中文注释、中文提示语，保持与现有代码一致

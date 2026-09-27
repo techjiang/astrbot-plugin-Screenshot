@@ -7,6 +7,13 @@
 
 ### 修复
 
+- **CI 全部 Stage 5 秒内红**（`.cnb.yml`）：脚本写的是 `python ...`，但构建镜像里
+  只有 `python3`，没有 `python` 这个软链，第一个 Stage「语法检查」直接以 127
+  （command not found）失败，后面三条 Stage 全被跳过。现在 Pipeline 级固定
+  `python:3.11-slim` 镜像，脚本统一改用 `python3`，不再依赖构建机默认 PATH。
+- **`tests/test_metadata.py` 的图像断言会被静默跳过**：该文件在缺 Pillow 时打
+  `[SKIP] 未安装 Pillow` 后仍以 0 退出，等于新增的「Logo 缩到 64px 糊不糊」
+  断言白写。CI 的 metadata 自检现在先 `pip install -r requirements.txt`。
 - **商店头像缩到小尺寸后糊成一片**：`assets/logo.png` 直接用了作者提供的整图
   （图标 + `Screenshot` + `AstrBot Plugin` 两行标题）缩到 256×256，商店列表与
   插件卡片里只有 40px 上下，标题文字退化成一片灰雾，看起来像图没渲染好。

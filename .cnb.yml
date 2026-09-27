@@ -1,20 +1,30 @@
+# 所有 Stage 都需要 Python 与 Pillow（tests/test_metadata.py 要读 PNG 像素），
+# 统一在 Pipeline 级指定镜像，避免依赖构建机默认 PATH 里有 `python`。
+# 注意：默认构建镜像里只有 python3，没有 `python` 这个软链，
+# 直接写 `python ...` 会以 127（command not found）失败，所以这里显式用 python3。
+.docker-config: &docker-config
+  docker:
+    image: python:3.11-slim
+
 main:
   push:
-    - stages:
+    - <<: *docker-config
+      stages:
         - name: 语法检查
-          script: python -m compileall -q .
+          script: python3 -m compileall -q .
         - name: metadata 自检
-          script: python tests/test_metadata.py
+          script: python3 -m pip install -q -r requirements.txt && python3 tests/test_metadata.py
   pull_request:
-    - stages:
+    - <<: *docker-config
+      stages:
         - name: 语法检查
-          script: python -m compileall -q .
+          script: python3 -m compileall -q .
         - name: 指令解析回归
-          script: python tests/test_parse.py
+          script: python3 tests/test_parse.py
         - name: 文档一致性检查
-          script: python tests/test_docs.py
+          script: python3 tests/test_docs.py
         - name: metadata 自检
-          script: python tests/test_metadata.py
+          script: python3 -m pip install -q -r requirements.txt && python3 tests/test_metadata.py
 
 $:
   tag_push:
