@@ -16,20 +16,27 @@ from astrbot.api.star import Context, Star, StarTools
 from astrbot.core.star.filter.command import GreedyStr
 
 from .core.browser import find_browser
-from .core.config import ShotOptions, parse_instruction
-from .core.image import to_bytes, wrap_html
+from .core.config import (
+    ShotOptions,
+    as_int,
+    load_extra_headers,
+    parse_instruction,
+    suggest_url,
+)
+from .core.image import detect_mime, suggest_suffix, to_bytes, wrap_html
 from .core.session import ScreenshotError, ScreenshotSession
 
 logger = logging.getLogger("astrbot.screenshot")
 
-_URL_SCHEME = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.\-]*:")
+# 缓存文件最多保留这么多张，避免长期运行把磁盘写满
+CACHE_KEEP = 120
 
 
 class ScreenshotPlugin(Star):
     """Screenshot · CDP 直驱截图
 
-    /截图 <网址> [view|viewport|full] [元素选择器] [设备] [scale=2] [dark] \
-[hide=.a,.b] [watermark=文本] [wait=选择器] [waitms=毫秒]
+    /截图 <网址> [ viewport | full | 元素选择器 ] [设备] [scale=2] [dark] \\
+[hide=.a,.b] [watermark=文本] [wait=选择器] [waitms=毫秒] [format=png|jpeg|pdf]
     /元素截图 <网址> <CSS选择器>
     /渲染截图 <HTML 片段>
     """
@@ -44,13 +51,20 @@ class ScreenshotPlugin(Star):
     async def _get_session(self) -> ScreenshotSession:
         if self._session is None:
             binary = find_browser(str(self._conf("browser_path", "")))
-            self._session = ScreenshotSession(binary, self._conf("launch_flags", []))
+            self._session = ScreenshotSession(
+                binary,
+                self._conf("launch_flags", []),
+                proxy=str(self._conf("proxy", "") or ""),
+                headers=load_extra_headers(self.config),
+                max_concurrent=as_int(self._conf("max_concurrent", 4), 4, low=1, high=16),
+            )
         return self._session
 
     async def terminate(self) -> None:
         if self._session:
             await self._session.shutdown()
             self._session = None
+        self._cleanup_cache()
 
     def _conf(self, key: str, default=None):
         try:
@@ -79,10 +93,14 @@ class ScreenshotPlugin(Star):
         async for result in self._shoot(event, str(instruction), mode="render"):
             yield result
 
+    @filter.command("截图帮助")
+    async def help_command(self, event: AstrMessageEvent):
+        yield event.plain_result(HELP_TEXT)
+
     # ---------- 实现 ----------
 
     async def _shoot(self, event: AstrMessageEvent, instruction: str, mode: str):
-        instruction = instruction.strip()
+        instruction = (instruction or "").strip()
         if not instruction:
             yield event.plain_result(HELP_TEXT)
             return
@@ -93,33 +111,49 @@ class ScreenshotPlugin(Star):
         except ValueError as exc:
             yield event.plain_result(f"参数有误：{exc}")
             return
-        except (ScreenshotError, RuntimeError) as exc:
+        except ScreenshotError as exc:
             logger.warning("截图失败：%s", exc)
             yield event.plain_result(f"截图失败：{exc}")
             return
+        except Exception as exc:  # 兜底：不让异常逃逸成静默无响应
+            logger.exception("截图出现未预期错误")
+            yield event.plain_result(f"截图失败：{type(exc).__name__}: {exc}")
+            return
+
+        if not payloads:
+            yield event.plain_result("截图失败：未生成任何图片")
+            return
 
         for path in self._persist(event, payloads):
-            yield event.image_result(str(path))
+            if detect_mime(path.read_bytes()).startswith("image/"):
+                yield event.image_result(str(path))
+            else:
+                yield event.plain_result(f"已生成文件：{path.name}")
 
     def _build_options(self, instruction: str, mode: str) -> ShotOptions:
         if mode == "render":
             opts = ShotOptions(mode="render")
-            opts.url = instruction[5:] if instruction.lower().startswith("html:") else instruction
-            opts.timeout_ms = int(self._conf("timeout_ms", 20000))
+            opts.url = instruction[5:].lstrip() if instruction.lower().startswith("html:") \
+                else instruction
+            opts.timeout_ms = as_int(self._conf("timeout_ms", 20000), 20000,
+                                     low=1000, high=600000)
             return opts
 
         opts = parse_instruction(instruction, defaults=self.config)
         if mode == "element":
             opts.mode = "element"
         if not opts.url:
-            raise ValueError("请提供网址")
+            raise ValueError("请提供网址，例如 /截图 example.com")
+        opts.url = suggest_url(opts.url)
         if opts.mode == "element" and not opts.selector:
             raise ValueError("请提供 CSS 选择器，例如 /元素截图 example.com #main")
         return opts
 
     async def _capture(self, opts: ShotOptions) -> list[bytes]:
         session = await self._get_session()
-        max_height = int(self._conf("max_height", 6000))
+        max_height = as_int(
+            opts.max_height or self._conf("max_height", 6000), 6000, low=0, high=100000
+        )
 
         if opts.mode == "render":
             html = opts.url
@@ -127,34 +161,59 @@ class ScreenshotPlugin(Star):
                 html = wrap_html(html, theme="dark" if opts.dark else "light")
             png = await session.render_html(html, opts)
         else:
-            if _URL_SCHEME.match(opts.url) is None and not opts.url.startswith("//"):
-                opts.url = "https://" + opts.url
             png = await session.capture(opts)
 
-        return to_bytes(png, max_height=max_height)
+        return to_bytes(
+            png,
+            max_height=max_height,
+            fmt=opts.img_format,
+            quality=opts.quality,
+        )
 
-    def _persist(self, event: AstrMessageEvent, payloads: list[bytes]) -> list[Path]:
+    def _cache_dir(self) -> Path:
         out_dir = Path(StarTools.get_data_dir("astrbot_plugin_screenshot")) / "cache"
         out_dir.mkdir(parents=True, exist_ok=True)
+        return out_dir
+
+    def _persist(self, event: AstrMessageEvent, payloads: list[bytes]) -> list[Path]:
+        out_dir = self._cache_dir()
         session_key = re.sub(r"\W+", "_", str(event.get_session_id())) or "session"
-        paths = []
+        paths: list[Path] = []
         for index, data in enumerate(payloads):
-            suffix = "png" if data[:4] == b"\x89PNG" else "jpg"
-            target = out_dir / f"{session_key}_{index}.{suffix}"
+            suffix = suggest_suffix(data)
+            target = out_dir / f"{session_key}_{index}{suffix}"
             target.write_bytes(data)
             paths.append(target)
+        self._cleanup_cache(out_dir, keep=CACHE_KEEP)
         return paths
+
+    def _cleanup_cache(self, out_dir: Path | None = None, *, keep: int = CACHE_KEEP) -> None:
+        """按修改时间清理历史缓存，失败不影响主流程。"""
+        try:
+            directory = out_dir or self._cache_dir()
+            files = sorted(
+                (p for p in directory.iterdir() if p.is_file()),
+                key=lambda p: p.stat().st_mtime,
+                reverse=True,
+            )
+            for stale in files[keep:]:
+                stale.unlink(missing_ok=True)
+        except Exception as exc:  # 清理是尽力而为
+            logger.debug("缓存清理跳过：%s", exc)
 
 
 HELP_TEXT = """Screenshot · CDP 直驱截图
 
-/截图 <网址>                    整页长图
-/截图 <网址> viewport           只截可视区
-/截图 <网址> #main .card        截指定元素
-/截图 <网址> iphone scale=2     指定设备与缩放
-/截图 <网址> dark               暗色模式
-/元素截图 <网址> <CSS选择器>    元素截图
-/渲染截图 <html>...             渲染 HTML 片段
+/截图 <网址>                      整页长图
+/截图 <网址> viewport             只截可视区
+/截图 <网址> #main .card          截指定元素
+/截图 <网址> iphone scale=2       设备与缩放
+/截图 <网址> dark                 暗色模式
+/截图 <网址> format=jpeg quality=80  指定输出格式
+/截图 <网址> format=pdf           输出 PDF，适合超长页面
+/元素截图 <网址> <CSS选择器>      元素截图
+/渲染截图 <html>...               渲染 HTML 片段
 
-其它参数：wait=选择器  waitms=毫秒  hide=.广告,.浮层  watermark=水印  timeout=毫秒
-设备：desktop / laptop / iphone / android / pad，也可直接写 1440x900"""
+参数：wait=选择器  waitms=毫秒  hide=.广告,.浮层  watermark=水印  timeout=毫秒
+设备：desktop / laptop / iphone / android / pad，也可直接写 1440x900
+"""
