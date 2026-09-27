@@ -374,8 +374,10 @@ SHOT_BROWSER=$(which chromium) python3 tests/e2e_astrbot.py
 
 ## 8. 调试技巧
 
-- **提日志等级**：AstrBot 日志里 `astrbot.screenshot` 是插件命名空间，
-  打开 debug 能看到分段进度、网络判据、降 DPR 等决策
+- **提日志等级**：插件统一用 `from astrbot.api import logger`，用的就是 AstrBot 主
+  日志器（`logger.name == "astrbot"`）。**不要**再用内置 `logging` 自建命名空间
+  （早期 v0.5.1 那版就是自建 `<插件名>.screenshot` 命名空间，被商店规范驳回）。
+  把 AstrBot 的日志级别调到 debug，就能看到分段进度、网络判据、降 DPR 等决策
 - **手工起一个 CDP 浏览器**对着玩：
   ```bash
   chromium --headless=new --remote-debugging-port=9222 --no-sandbox about:blank

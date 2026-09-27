@@ -33,6 +33,16 @@
 
 - `tests/test_metadata.py` 增加两条 32px 级渲染断言（主体 > 30% 画布、
   糊掉区域 < 45%），把「24–32px 下是否还认得出」纳入回归，而不只测到 64px。
+- `tests/test_docs.py` 增加日志写法守卫：三个源码文件不得出现内置 `logging`、
+  必须从 `astrbot.api` 取 `logger`，文档里也不得再提内置日志时代的自建命名空间
+  —— 把「改完代码忘了改文档」这类回退也拦在 CI 里。
+
+### 文档
+
+- 订正 `docs/DEVELOPMENT.md` §8 与 `docs/USAGE.md` §6 里残留的旧说法：
+  这两处还写着「AstrBot 日志里 `<插件名>.screenshot` 是插件命名空间」，
+  那是内置 `logging` 时代的写法。现在改为说明插件用的是 AstrBot 主日志器
+  （`logger.name == "astrbot"`），并把自建命名空间标注为商店规范禁止的写法。
 
 ## [v0.5.1] — 2026-09-27
 

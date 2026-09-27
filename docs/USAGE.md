@@ -205,7 +205,7 @@
 | `截图失败：无法打开页面：net::ERR_NAME_NOT_RESOLVED` | 域名解析不了 | 检查网址 / 代理配置 |
 | `截图失败：无法打开页面：net::ERR_CONNECTION_TIMED_OUT` | 连不上 | 检查网络与 `proxy` |
 | `截图失败：页面加载超时（>20s）：xxx` | 页面一直没稳定 | 加 `timeout=60000`，或用 `waitms=` |
-| `截图失败：未生成任何图片` | 出图链路异常 | 看 AstrBot 日志里的 `astrbot.screenshot` |
+| `截图失败：未生成任何图片` | 出图链路异常 | 看 AstrBot 日志（插件用 `astrbot.api` 的 logger，日志级别调到 debug 可看到出图决策） |
 
 ## 7. 出图不对怎么查
 

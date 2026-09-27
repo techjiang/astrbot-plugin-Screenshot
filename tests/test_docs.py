@@ -94,6 +94,24 @@ def main() -> int:
                 continue
             check(f"文档引用的仓库内路径存在 {ref}", (ROOT / target).exists())
 
+    # 日志写法必须与商店规范一致：logger 只能来自 astrbot.api。
+    # 线上踩过一次：代码已改成 `from astrbot.api import logger`，但文档里还留着
+    # 旧的自建命名空间 `astrbot.screenshot`，会把人带回违规写法（v0.5.1 就是被
+    # 商店的 LLM Guard 以「禁止使用内置 logging」驳回的）。
+    docs_all = "\n".join(
+        (ROOT / rel).read_text(encoding="utf-8")
+        for rel in ("README.md", "CHANGELOG.md", "docs/USAGE.md", "docs/DEVELOPMENT.md",
+                    "docs/FAQ.md")
+    )
+    for module, src in (("main.py", main_src),
+                        ("core/browser.py", (ROOT / "core" / "browser.py").read_text(encoding="utf-8")),
+                        ("core/session.py", (ROOT / "core" / "session.py").read_text(encoding="utf-8"))):
+        check(f"{module} 不使用内置 logging", not re.search(r'^\s*(?:import logging|from logging import)', src, re.M))
+        check(f"{module} 从 astrbot.api 取 logger", "from astrbot.api import" in src and "logger" in src)
+    check("文档不再提旧命名空间 astrbot.screenshot",
+          "`astrbot.screenshot`" not in docs_all,
+          "文档里出现 `astrbot.screenshot`，那是内置 logging 时代的写法")
+
     if FAILURES:
         print(f"\n=== 文档检查：{len(FAILURES)} 项不一致 ===")
         for item in FAILURES:
