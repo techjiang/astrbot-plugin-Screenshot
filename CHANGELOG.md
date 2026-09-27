@@ -7,13 +7,18 @@
 
 ### 修复
 
-- **CI 全部 Stage 5 秒内红**（`.cnb.yml`）：脚本写的是 `python ...`，但构建镜像里
-  只有 `python3`，没有 `python` 这个软链，第一个 Stage「语法检查」直接以 127
-  （command not found）失败，后面三条 Stage 全被跳过。现在 Pipeline 级固定
-  `python:3.11-slim` 镜像，脚本统一改用 `python3`，不再依赖构建机默认 PATH。
+- **CI「指令解析回归」Stage 报 `ModuleNotFoundError: No module named “PIL”`**
+  （`.cnb.yml`）：`tests/test_parse.py` 虽然只测纯函数，但经 `core.image` /
+  `core.session` **间接 import PIL**，构建镜像里没装 `requirements.txt`，import
+  阶段就炸，后面两个 Stage 连带被跳过。现在该 Stage 先装依赖再跑检查。
+- **脚本写的是 `python ...`，但构建镜像里只有 `python3`**，没有 `python` 这个软链，
+  会以 127（command not found）失败。脚本统一改用 `python3`，不再依赖构建机默认 PATH。
 - **`tests/test_metadata.py` 的图像断言会被静默跳过**：该文件在缺 Pillow 时打
   `[SKIP] 未安装 Pillow` 后仍以 0 退出，等于新增的「Logo 缩到 64px 糊不糊」
-  断言白写。CI 的 metadata 自检现在先 `pip install -r requirements.txt`。
+  断言白写。新增 `--require-pillow` 开关，CI 一律带上，缺依赖即 FAIL。
+- **CI 的 `A && B` 写法有假绿风险**：CNB 的 `script` 每段新建 shell，`pip install`
+  作最后一条命令时以 0 收尾；若某镜像里 pip 缺失（打印 127 仍退出 0，CNB 不按 127
+  判错），`&&` 后的检查会被整个跳过、Stage 变绿。改为多行 + 分号，检查一定执行。
 - **商店头像缩到小尺寸后糊成一片**：`assets/logo.png` 直接用了作者提供的整图
   （图标 + `Screenshot` + `AstrBot Plugin` 两行标题）缩到 256×256，商店列表与
   插件卡片里只有 40px 上下，标题文字退化成一片灰雾，看起来像图没渲染好。
@@ -28,6 +33,8 @@
 - `tests/test_metadata.py` 增加 3 条 Logo 渲染侧断言：头像必须**只命中图标本体**
   （缩到 64px 后半透明「糊掉区域」< 25%、可见主体 > 15% 画布），横幅必须存在、
   带 alpha、四角透明。反向验证过：拿旧头像跑必然 FAIL（半透明占比 35.5%）。
+- `tests/test_metadata.py` 新增 `--require-pillow` 开关：缺 Pillow 时不再静默 SKIP，
+  直接判失败；CI 一律带上这个开关。
 
 ## [v0.5.0] — 2026-09-27
 

@@ -1,13 +1,18 @@
 """metadata.yaml 自检：面向 AstrBot 官方插件商店的规范校验。
 
     python tests/test_metadata.py
+    python tests/test_metadata.py --require-pillow   # CI 用：缺 Pillow 直接判失败
 
-不依赖 AstrBot 运行环境与网络，纯静态校验 + 可选的 Pillow 图像校验，
+不依赖 AstrBot 运行环境与网络，纯静态校验 + Pillow 图像校验，
 可直接挂进 CI。校验三条线：
 
 1. 身份与字段规范（名称、显示名、版本、作者、仓库、支持版本）
 2. 商店记录生成所需的字段是否齐全、取值合法
-3. Logo 资源是否真实存在、是否为正方形透明 PNG
+3. Logo 资源是否真实存在、是否为正方形透明 PNG，以及缩到小尺寸后是否还看得清
+
+**为什么有 `--require-pillow`**：第 7 节那几条渲染侧断言（「缩到 64px 糊不糊」）
+只能靠 Pillow 读像素，缺依赖时脚本原本打一行 `[SKIP]` 就退出 0 —— 断言等于白写，
+CI 却是绿的。CI 里必须传这个开关，让「依赖没装」变成可见的失败。
 """
 
 from __future__ import annotations
@@ -20,6 +25,9 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 FAILURES: list[str] = []
+
+# CI 传 --require-pillow：缺依赖时不再静默 SKIP，直接判失败
+REQUIRE_PILLOW = "--require-pillow" in sys.argv[1:]
 
 
 def check(label: str, actual, expected) -> None:
@@ -160,6 +168,9 @@ if logo_path.is_file():
         from PIL import Image
     except ImportError:
         Image = None
+    if Image is None and REQUIRE_PILLOW:
+        ok("已安装 Pillow（--require-pillow）", False,
+           "缺 Pillow，Logo 渲染侧断言无法执行；请先 pip install -r requirements.txt")
     if Image is not None:
         with Image.open(logo_path) as im:
             ok("Logo 是正方形", im.width == im.height, f"{im.width}x{im.height}")

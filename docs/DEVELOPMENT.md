@@ -337,20 +337,31 @@ SHOT_BROWSER=$(which chromium) python3 tests/e2e_astrbot.py
 
 ### 7.4 CI
 
-`.cnb.yml` 已配置（Pipeline 级固定 `python:3.11-slim` 镜像）：
+`.cnb.yml` 已配置。CI 不固定镜像，直接用默认构建镜像（里面有 python3），
+每个需要依赖的 Stage 在**同一个脚本**里先装依赖、再跑检查：
 
-- `main` 分支 push：`python3 -m compileall -q .` 语法检查 + `python3 tests/test_metadata.py`
-- PR：语法检查 + `python3 tests/test_parse.py` 解析回归 + `python3 tests/test_docs.py` 文档一致性检查 + `python3 tests/test_metadata.py`
+- `main` 分支 push：`python3 -m compileall -q .` 语法检查 + `python3 tests/test_metadata.py --require-pillow`
+- PR：语法检查 +
+  `python3 tests/test_parse.py`（先 `pip install -r requirements.txt`）+
+  `python3 tests/test_docs.py` 文档一致性检查 +
+  `python3 tests/test_metadata.py --require-pillow`（先 `pip install -r requirements.txt`）
 - tag push：自动打标签
 
-> **踩过的坑**：默认构建镜像里只有 `python3`，没有 `python` 这个软链。
-> 脚本里写 `python ...` 会以 127（command not found）直接失败，5 秒就红。
-> 所以流水线脚本一律用 `python3`，并且显式指定带 Python 的镜像，
-> 不依赖构建机默认 PATH。
+> **踩过的坑（都真实红过 CI）**：
 >
-> `tests/test_metadata.py` 的图像断言需要 Pillow，未装会**静默跳过**
-> （打 `[SKIP] 未安装 Pillow`，退出码仍是 0）——等于新增的「缩到 64px 糊不糊」
-> 这类断言白写。所以 CI 里 metadata 自检前先 `pip install -r requirements.txt`。
+> 1. 默认构建镜像里只有 `python3`，没有 `python` 这个软链。脚本里写 `python ...`
+>    会以 127（command not found）直接失败，5 秒就红。所以流水线脚本一律用 `python3`，
+>    不依赖构建机默认 PATH。
+> 2. `tests/test_parse.py` 经 `core.image` / `core.session` **间接依赖 PIL**，
+>    只跑纯逻辑也要装 `requirements.txt`，否则 import 阶段就
+>    `ModuleNotFoundError: No module named 'PIL'`。
+> 3. `tests/test_metadata.py` 的图像断言需要 Pillow，未装只会打
+>    `[SKIP] 未安装 Pillow` 并以 **0 退出**——断言等于白写、CI 却是绿的。
+>    所以 CI 一律带 `--require-pillow`，把「依赖没装」变成可见的 FAIL。
+> 4. **不要把装依赖和跑检查写成 `A && B`**。CNB 的 `script` 是每段新建 shell 执行的，
+>    `pip install` 是最后一条命令时以 exit 0 收尾；万一某个镜像里没有 pip
+>    （打印 127 却仍退出 0，CNB 不按 127 判错），`&&` 后面的检查会被**整个跳过**、
+>    Stage 假绿。写成多行 + 分号，让检查一定执行，由检查自己决定 Stage 成败。
 
 `tests/test_docs.py` 会核对 schema 里的配置键、`_apply_kv` 认识的参数 key 与
 `main.HELP_TEXT` 是否都出现在 README / 使用文档里，改参数忘了改文档会被它拦下。

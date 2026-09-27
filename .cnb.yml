@@ -1,30 +1,42 @@
-# 所有 Stage 都需要 Python 与 Pillow（tests/test_metadata.py 要读 PNG 像素），
-# 统一在 Pipeline 级指定镜像，避免依赖构建机默认 PATH 里有 `python`。
-# 注意：默认构建镜像里只有 python3，没有 `python` 这个软链，
-# 直接写 `python ...` 会以 127（command not found）失败，所以这里显式用 python3。
-.docker-config: &docker-config
-  docker:
-    image: python:3.11-slim
+# CI 里要跑的三支检查都需要依赖：
+#   - tests/test_parse.py 经 core.image / core.session 间接 import PIL
+#   - tests/test_metadata.py 的 Logo 渲染侧断言要读 PNG 像素（Pillow）
+# 所以每个 Stage 都在同一个脚本里「先装依赖、再跑检查」。
+#
+# 踩过的两个坑：
+#   1. 默认构建镜像里只有 python3，没有 python 这个软链，写 `python ...`
+#      会以 127（command not found）失败，所以脚本里一律用 python3。
+#   2. Pillow 缺位时 tests/test_metadata.py 只打 [SKIP] 并以 0 退出，
+#      等于断言被静默跳过。这里显式 --require-pillow 把它变成 FAIL。
+#
+# 注意：不要写成 `pip install ... && python3 xxx`。CNB 的 script 是每次
+# 新建 shell 执行的，`pip install` 会以 exit 0 收尾，若某个镜像里 pip 不存在
+# （打印 127 后仍退出 0，CNB 不按 127 判错），&& 后的检查就会被整个跳过、
+# Stage 假绿。用分号让检查一定执行，由检查自己决定 Stage 的成败。
 
 main:
   push:
-    - <<: *docker-config
-      stages:
+    - stages:
         - name: 语法检查
           script: python3 -m compileall -q .
         - name: metadata 自检
-          script: python3 -m pip install -q -r requirements.txt && python3 tests/test_metadata.py
+          script: |
+            python3 -m pip install -r requirements.txt
+            python3 tests/test_metadata.py --require-pillow
   pull_request:
-    - <<: *docker-config
-      stages:
+    - stages:
         - name: 语法检查
           script: python3 -m compileall -q .
         - name: 指令解析回归
-          script: python3 tests/test_parse.py
+          script: |
+            python3 -m pip install -r requirements.txt
+            python3 tests/test_parse.py
         - name: 文档一致性检查
           script: python3 tests/test_docs.py
         - name: metadata 自检
-          script: python3 -m pip install -q -r requirements.txt && python3 tests/test_metadata.py
+          script: |
+            python3 -m pip install -r requirements.txt
+            python3 tests/test_metadata.py --require-pillow
 
 $:
   tag_push:
