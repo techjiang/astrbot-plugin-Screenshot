@@ -389,14 +389,47 @@ SHOT_BROWSER=$(which chromium) python3 tests/e2e_astrbot.py
 ## 9. 发布流程
 
 1. 确认 `tests/test_parse.py` 与 `tests/e2e_astrbot.py` 全绿
-2. 同步三处版本号与描述：`metadata.yaml`（`version`、`desc`）、`README.md`、`CHANGELOG.md`
-3. 新增配置项要同步 `_conf_schema.json`（含 `description` 与 `default`）
-4. 新增指令参数要同步 `main.HELP_TEXT`、`README.md` 参数表、`docs/USAGE.md`
-5. 提交 PR；合入后 push tag 触发自动打标签
-6. 部署环境确认已装 `chromium` 与中文字体
+2. 取新版本号：**必须大于历史上用过的任何版本号**（见下方「版本号纪律」），
+   确认该号从未发布过
+3. 同步三处版本号与描述：`metadata.yaml`（`version`、`desc`）、`README.md`、`CHANGELOG.md`
+4. 新增配置项要同步 `_conf_schema.json`（含 `description` 与 `default`）
+5. 新增指令参数要同步 `main.HELP_TEXT`、`README.md` 参数表、`docs/USAGE.md`
+6. 跑 `python3 tests/test_metadata.py --require-pillow`，确认版本三处一致
+7. 提交 PR；合入后 push tag 触发自动打标签
+8. 部署环境确认已装 `chromium` 与中文字体
 
 **版本号语义**：修渲染缺陷 / 加参数 → patch；加能力（如 PDF、透明） → minor；
 破坏性改指令语法 → major。
+
+### 9.1 版本号纪律
+
+**规则：版本号只增不减，一个号只能用一次；用过的号即使是「未发布状态」也不能回收。**
+
+依据来自 AstrBot 官方插件商店的发布约定：**该版本号已经使用过，即使版本已删除
+或撤回，也不能重复使用。** 平台侧是按版本号记账的 —— 同一个号第二次提交，
+要么被拒，要么让旧记录与新内容对不上，无论哪种都会让「这个版本到底是哪份代码」
+无法追溯。
+
+因此下面这些情况都算「已用掉」，必须换新号：
+
+- 已经发布过 Release（哪怕后来把 Release 删了、把 tag 撤了）
+- 已经打过 tag（哪怕 tag 已删除）
+- 已经写进 `metadata.yaml` 并提交过（哪怕没发布、没打 tag）—— 号已经「露过面」
+- 提交给商店审核后被驳回（驳回也算一次使用记录）
+
+实践上照这个顺序做就不会踩：
+
+```text
+1) 先 git tag --list 与平台 Release 列表核对，确认目标号没被占
+2) 号写进 metadata.yaml / README / CHANGELOG 三处后再提交
+3) 一旦提交过，这个号就当作「已用掉」；要改内容就再往前加一个 patch 号
+4) 撤销发布时，删 tag / 删 Release 都不代表号可以回收，新版本一律往后递增
+```
+
+> 真实踩过一次：上架修复先在 `metadata.yaml` 写了 `0.5.2`（尚未发布、未打 tag），
+> 随后按纪律改用 `0.5.3`，并在 `CHANGELOG.md` 里留了说明。
+> 相关约束已加进 `tests/test_metadata.py`：版本号不得低于历史最高版本，
+> 且必须与 `README.md`、`CHANGELOG.md` 三处一致。
 
 ## 10. 贡献约定
 

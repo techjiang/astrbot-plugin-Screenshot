@@ -103,6 +103,49 @@ ok("version 不带 `v` 前缀", not version.startswith("v"), version)
 ok("version 符合 PEP 440",
    bool(re.fullmatch(r"\d+(\.\d+){1,3}([abrc]\d+|\.post\d+|\.dev\d+)?", version)), version)
 
+
+def _ver_tuple(text: str) -> tuple[int, ...]:
+    """把版本号转成可比较的元组，非数字段（rc/post/dev）按 0 补齐。"""
+    parts = re.findall(r"\d+", text)
+    return tuple(int(x) for x in parts[:4])
+
+
+# 版本号只增不减：一个号只能用一次。
+# 依据是 AstrBot 官方插件商店的发布约定 —— 「该版本号已经使用过，即使版本已
+# 删除或撤回，也不能重复使用」。平台按版本号记账，回退或复用会让「某个版本
+# 对应哪份代码」无法追溯。所以这里把「历史最高版本」当作下限来卡：
+#   - 下限取 README 徽章 / CHANGELOG 各条目标题里的最大版本号
+#   - metadata.yaml 里的 version 必须 >= 该下限
+# 一旦有人把版本号写小（典型场景：改完发现要撤回重发，顺手把号降回去），
+# 这条会直接失败。
+# 注意：CHANGELOG 允许保留比当前版本更高的条目（例如先写了 0.5.2 又顺延到
+# 0.5.3），所以只比较「不低于下限」，不强求「等于下限」。
+changelog_versions = []
+_cl_path = ROOT / "CHANGELOG.md"
+if _cl_path.is_file():
+    changelog_versions = re.findall(
+        r"^##\s*\[?v?(\d+(?:\.\d+){1,3})\]?", _cl_path.read_text(encoding="utf-8"),
+        re.M)
+readme_versions = re.findall(r"badge/version-v(\d+(?:\.\d+){1,3})",
+                             (ROOT / "README.md").read_text(encoding="utf-8"))
+seen = [_ver_tuple(v) for v in changelog_versions + readme_versions if _ver_tuple(v)]
+floor = max(seen) if seen else ()
+
+if floor:
+    def _fmt(t: tuple[int, ...]) -> str:
+        return ".".join(str(x) for x in t)
+
+    ok(f"version 不低于历史最高版本 {_fmt(floor)}",
+       _ver_tuple(version) >= floor,
+       f"当前 {version}；版本号只能用一次、只增不减，"
+       f"已删除或撤回的号同样不可复用，请改用更高的新号")
+    ok("version 记录在 CHANGELOG 中",
+       version in changelog_versions,
+       f"CHANGELOG 里没有 {version} 的条目")
+    ok("version 与 README 徽章一致",
+       (not readme_versions) or version in readme_versions,
+       f"README 徽章写的是 {readme_versions}，metadata 是 {version}")
+
 # ---------- 3) 仓库地址：商店要求可公开访问的 GitHub 仓库 ----------
 
 repo = meta.get("repo", "")

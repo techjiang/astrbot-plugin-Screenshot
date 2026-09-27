@@ -6,10 +6,17 @@
 # 对不上，运行时会直接挂；bookworm 变体可正常执行。仓库已有 3.11 语法
 # （`X | Y` 类型标注），所以固定 3.11 而不是 3.12。
 #
-# CI 里要跑的三支检查都需要依赖：
-#   - tests/test_parse.py 经 core.image / core.session 间接 import PIL
+# 依赖情况：
+#   - tests/test_parse.py 经 core.image 间接 import PIL，需要 requirements.txt
 #   - tests/test_metadata.py 的 Logo 渲染侧断言要读 PNG 像素（Pillow）
-# 所以每个 Stage 都在同一个脚本里「先装依赖、再跑检查」。
+#   - tests/test_docs.py 纯静态、零依赖
+# 需要依赖的 Stage 都在同一个脚本里「先装依赖、再跑检查」。
+#
+# 注意：tests/test_parse.py 的设计目标是「不依赖 AstrBot / 浏览器」。
+# 一旦有人为了测某个纯函数直接 `from core.session import ...`，就会把
+# astrbot / aiohttp 一起拖进来，这个 Stage 立刻
+# `ModuleNotFoundError: No module named 'astrbot'`。要测这类函数，
+# 用 tests/test_parse.py 里 `_load_plan_strips()` 那种「按源码抠出纯函数」的办法。
 #
 # 注意：不要写成 `pip install ... && python3 xxx`。CNB 的 script 是每次
 # 新建 shell 执行的，`pip install` 会以 exit 0 收尾，若某个镜像里 pip 不存在

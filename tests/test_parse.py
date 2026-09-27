@@ -9,7 +9,9 @@
 
 from __future__ import annotations
 
+import re
 import sys
+import textwrap
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -29,7 +31,6 @@ from core.image import (  # noqa: E402
     plan_tiles,
     suggest_suffix,
 )
-from core.session import ScreenshotSession  # noqa: E402
 
 FAILURES: list[str] = []
 
@@ -181,9 +182,29 @@ check("配对判断忽略转义引号",
       shot(r'example.com watermark="a \" b"').watermark != "", True)
 
 # ---------- 分段规划（避免最后一条只剩几十像素） ----------
+#
+# `ScreenshotSession._plan_strips` 是纯函数，但 `core.session` 顶层要
+# `import aiohttp` / `from astrbot.api import logger`，一旦 import 整个模块，
+# 本脚本就不再是「零依赖、不需要 AstrBot」的回归了（CI 里会直接
+# `ModuleNotFoundError: No module named 'astrbot'`）。
+# 这里按源码抠出这个静态方法的最小实现来测：它只依赖自身参数，
+# 不读实例状态，等价性由 e2e 那侧的真实截图结果兜底。
 
-def strips(height, budget):
-    return ScreenshotSession._plan_strips(height, budget)
+def _load_plan_strips():
+    """从 core/session.py 里抠出 _plan_strips 并单独执行，不 import 整个模块。"""
+    src = (Path(__file__).resolve().parent.parent / "core" / "session.py").read_text(
+        encoding="utf-8")
+    match = re.search(
+        r"(    def _plan_strips\(height: int, budget: int\).*?)(?=\n    (?:async )?def |\nclass )",
+        src, re.S)
+    if not match:
+        raise SystemExit("[FAIL] 在 core/session.py 里找不到 _plan_strips，测试需同步更新")
+    namespace: dict = {}
+    exec(textwrap.dedent(match.group(1)), namespace)
+    return staticmethod(namespace["_plan_strips"])
+
+
+strips = _load_plan_strips().__func__
 
 check("整页不超上限 → 单条",
       strips(6000, 6000), [(0, 6000)])
