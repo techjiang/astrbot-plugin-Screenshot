@@ -1,6 +1,8 @@
 <div align="center">
 
-<img src="assets/logo.png" alt="Screenshot · AstrBot Plugin" width="240">
+<img src="assets/logo-banner.png" alt="Screenshot · AstrBot Plugin" width="320">
+
+<sub>商店头像 / 仓库图标：<a href="assets/logo.png"><code>assets/logo.png</code></a>（256×256 透明 PNG）</sub>
 
 # Screenshot
 
