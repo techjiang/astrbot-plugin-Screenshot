@@ -1,7 +1,40 @@
 name: astrbot_plugin_screenshot
 display_name: Screenshot
-desc: 新一代非 API 接口截图插件，只靠 CDP 驱动浏览器完成整页截图、元素截图与 HTML 渲染截图。
-version: v0.1.0
+short_desc: CDP 直驱的网页截图：整页长图、元素截图、HTML 渲染、透明背景与 PDF
+desc: |
+  新一代非 API 接口截图插件。不依赖 Playwright / Selenium / html2image 等浏览器封装库，
+  而是直接用 CDP（Chrome DevTools Protocol）驱动浏览器内核完成截图，无驱动版本漂移。
+
+  支持整页长图（超长页自动分段拼接）、可视区截图、元素截图、HTML 渲染截图；
+  支持 PNG / JPEG / PDF 输出、透明背景、暗色模式、设备预设、水印、隐藏干扰元素、
+  等待渲染、代理与自定义请求头、并发闸门。
+
+  /截图 <网址> [viewport | 选择器] [设备] [scale=2] [dark] [transparent] [format=pdf]
+  /元素截图 <网址> <CSS选择器>
+  /渲染截图 <HTML片段>
+version: 0.5.2
 author: 科技酱
-repo: https://cnb.cool/asoe/TechSauce/astrbot-plugin-Screenshot
+repo: https://github.com/techjiang/astrbot-plugin-Screenshot
 astrbot_version: ">=4.0.0"
+support_platforms:
+  - aiocqhttp
+  - qq_official
+  - telegram
+  - discord
+  - slack
+  - lark
+  - dingtalk
+  - wecom
+  - kook
+  - vocechat
+  - misskey
+  - satori
+  - webchat
+tags:
+  - 工具
+  - 截图
+  - 网页
+  - 图像
+  - CDP
+social_link: https://docs.asoe.cn
+logo: assets/logo.png

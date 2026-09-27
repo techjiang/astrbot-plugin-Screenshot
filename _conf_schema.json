@@ -7,16 +7,49 @@
   "launch_flags": {
     "type": "list",
     "description": "追加到浏览器启动命令的参数",
-    "default": ["--no-sandbox", "--disable-dev-shm-usage"]
+    "default": [
+      "--disable-features=Translate",
+      "--autoplay-policy=no-user-gesture-required"
+    ]
+  },
+  "proxy": {
+    "type": "string",
+    "description": "浏览器出网代理，支持 http:// 与 socks5://，可带 user:pass@",
+    "default": ""
+  },
+  "headers": {
+    "type": "text",
+    "description": "附加到所有请求的 HTTP 头，每行一条，形如 Cookie: a=b",
+    "default": ""
+  },
+  "max_concurrent": {
+    "type": "int",
+    "description": "同时进行的截图上限，超出自动排队",
+    "default": 4
+  },
+  "max_dpr": {
+    "type": "float",
+    "description": "大图自动降 DPR 的上限（0 表示不降）。整页图本来就要分段时，降一档能显著减少分段与耗时",
+    "default": 0
   },
   "max_height": {
     "type": "int",
     "description": "单张图片最大高度，超出自动切片，0 表示不切",
     "default": 6000
   },
+  "image_format": {
+    "type": "string",
+    "description": "默认输出格式：png / jpeg",
+    "default": "png"
+  },
+  "jpeg_quality": {
+    "type": "int",
+    "description": "JPEG 质量（10-100）",
+    "default": 88
+  },
   "device": {
     "type": "string",
-    "description": "默认设备预设",
+    "description": "默认设备预设：desktop / laptop / iphone / android / pad，或 1440x900",
     "default": "desktop"
   },
   "full_page": {
@@ -33,5 +66,20 @@
     "type": "int",
     "description": "默认导航超时（毫秒）",
     "default": 20000
+  },
+  "transparent": {
+    "type": "bool",
+    "description": "默认保留页面透明背景（PNG 带 alpha 通道，适合截无背景 Logo/图标）",
+    "default": false
+  },
+  "padding": {
+    "type": "int",
+    "description": "元素截图默认向外留白像素数，用来容下 box-shadow / outline / 圆角光晕",
+    "default": 0
+  },
+  "render_watch_ms": {
+    "type": "int",
+    "description": "截图前观察 DOM 变化的窗口（毫秒），用于兜住 setTimeout 后才挂图/改版的页面",
+    "default": 250
   }
 }

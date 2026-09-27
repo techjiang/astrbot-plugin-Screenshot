@@ -1,0 +1,550 @@
+[
+  {
+    "label": "整页长图（自动切片）",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/index.html",
+    "assert": [
+      {
+        "kind": "min_fragments",
+        "value": 2
+      }
+    ]
+  },
+  {
+    "label": "可视区",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/index.html viewport",
+    "assert": [
+      {
+        "kind": "image_size",
+        "value": [
+          1600,
+          1000
+        ]
+      }
+    ]
+  },
+  {
+    "label": "元素截图（裸选择器）",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/index.html #tile-b"
+  },
+  {
+    "label": "元素截图（专用指令）",
+    "handler": "element_screenshot",
+    "text": "/元素截图 http://127.0.0.1:{PORT}/index.html #main"
+  },
+  {
+    "label": "选择器含空格与引号",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/index.html \"#main > p\""
+  },
+  {
+    "label": "HTML 渲染（视口不被 setDocumentContent 重置）",
+    "handler": "render_screenshot",
+    "text": "/渲染截图 <div style=\"padding:24px\"><h1>渲染成功 ✅</h1><p>中文与emoji混排 🚀</p></div>",
+    "assert": [
+      {
+        "kind": "image_size",
+        "value": [
+          1600,
+          1000
+        ]
+      }
+    ]
+  },
+  {
+    "label": "iphone × scale=2 × dark × hide × watermark",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/index.html iphone scale=2 dark hide=.ad watermark=@bot",
+    "assert": [
+      {
+        "kind": "watermark_at_bottom",
+        "within": 400
+      },
+      {
+        "kind": "no_pure_color_block",
+        "value": [
+          255,
+          107,
+          107
+        ],
+        "max_run": 120
+      }
+    ]
+  },
+  {
+    "label": "format=jpeg",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/index.html format=jpeg quality=80"
+  },
+  {
+    "label": "format=pdf 多页",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/index.html format=pdf",
+    "expect_image": false,
+    "assert": [
+      {
+        "kind": "text_contains",
+        "value": ".pdf"
+      }
+    ]
+  },
+  {
+    "label": "等待元素 + 固定延迟",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/index.html wait=.footer waitms=300 viewport"
+  },
+  {
+    "label": "越界参数被夹取",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/index.html scale=99 waitms=-5 timeout=1 viewport"
+  },
+  {
+    "label": "直接指定视口 1440x900",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/index.html 1440x900 viewport"
+  },
+  {
+    "label": "设备中文别名",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/index.html 手机 viewport"
+  },
+  {
+    "label": "整页 + 隐藏固定浮层",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/index.html hide=.ad,.topbar watermark=TechSauce",
+    "assert": [
+      {
+        "kind": "bottom_band",
+        "value": [
+          12,
+          166,
+          120
+        ],
+        "within": 300
+      }
+    ]
+  },
+  {
+    "label": "jpeg 长图切片",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/index.html format=jpeg max_height=3000"
+  },
+  {
+    "label": "暗色主题",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/sub.html dark viewport"
+  },
+  {
+    "label": "元素不存在（可读报错）",
+    "handler": "element_screenshot",
+    "text": "/元素截图 http://127.0.0.1:{PORT}/index.html #no-such-el",
+    "expect_image": false,
+    "assert": [
+      {
+        "kind": "text_contains",
+        "value": "没有找到元素"
+      }
+    ]
+  },
+  {
+    "label": "域名解析失败（可读报错）",
+    "handler": "screenshot",
+    "text": "/截图 http://this-host-does-not-exist-xyz.invalid/",
+    "expect_image": false,
+    "assert": [
+      {
+        "kind": "text_contains",
+        "value": "无法打开页面"
+      }
+    ]
+  },
+  {
+    "label": "超长页：分段截取后图底浮层贴到图底",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/long.html",
+    "assert": [
+      {
+        "kind": "bottom_band",
+        "value": [
+          12,
+          166,
+          120
+        ],
+        "within": 300
+      }
+    ]
+  },
+  {
+    "label": "超长页：分段截取后固定浮层只贴图底",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/long.html desktop",
+    "assert": [
+      {
+        "kind": "bottom_band",
+        "value": [
+          12,
+          166,
+          120
+        ],
+        "within": 300
+      }
+    ]
+  },
+  {
+    "label": "元素截图：高于视口的元素能整块取到",
+    "handler": "element_screenshot",
+    "text": "/元素截图 http://127.0.0.1:{PORT}/index.html #tall-block",
+    "assert": [
+      {
+        "kind": "height_range",
+        "value": [
+          1500,
+          3200
+        ]
+      }
+    ]
+  },
+  {
+    "label": "print 媒体：切到 @media print 分支",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/index.html print viewport",
+    "assert": [
+      {
+        "kind": "color_present",
+        "value": [
+          255,
+          0,
+          255
+        ],
+        "min_pixels": 1000
+      }
+    ]
+  },
+  {
+    "label": "非 print 媒体下没有 print-only 标记",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/index.html viewport",
+    "assert": [
+      {
+        "kind": "color_absent",
+        "value": [
+          255,
+          0,
+          255
+        ],
+        "max_pixels": 50
+      }
+    ]
+  },
+  {
+    "label": "无 viewport meta 的页面：移动端宽度夹回视口",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/no_viewport.html iphone viewport",
+    "assert": [
+      {
+        "kind": "image_size",
+        "value": [
+          390,
+          844
+        ]
+      },
+      {
+        "kind": "min_size",
+        "value": [
+          390,
+          844
+        ]
+      }
+    ]
+  },
+  {
+    "label": "有 viewport meta 的页面：移动端按 390 布局",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/index.html iphone viewport",
+    "assert": [
+      {
+        "kind": "image_size",
+        "value": [
+          390,
+          844
+        ]
+      },
+      {
+        "kind": "min_size",
+        "value": [
+          390,
+          844
+        ]
+      }
+    ]
+  },
+  {
+    "label": "非法选择器 → 可读报错（区别于「找不到元素」）",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/index.html [[[",
+    "expect_image": false,
+    "assert": [
+      {
+        "kind": "text_contains",
+        "value": "选择器不合法"
+      }
+    ]
+  },
+  {
+    "label": "元素被 display:none → 可读报错",
+    "handler": "element_screenshot",
+    "text": "/元素截图 http://127.0.0.1:{PORT}/index.html .print-only",
+    "expect_image": false,
+    "assert": [
+      {
+        "kind": "text_contains",
+        "value": "元素不可见或不可截取"
+      }
+    ]
+  },
+  {
+    "label": "空指令 → 回帮助而不是报错",
+    "handler": "render_screenshot",
+    "text": "/渲染截图",
+    "expect_image": false,
+    "assert": [
+      {
+        "kind": "text_contains",
+        "value": "Screenshot · CDP 直驱截图"
+      }
+    ]
+  },
+  {
+    "label": "元素远在页尾也能截到",
+    "handler": "element_screenshot",
+    "text": "/元素截图 http://127.0.0.1:{PORT}/index.html #page-footer",
+    "assert": [
+      {
+        "kind": "height_range",
+        "value": [
+          40,
+          400
+        ]
+      }
+    ]
+  },
+  {
+    "label": "只给参数不给网址 → 可读报错",
+    "handler": "screenshot",
+    "text": "/截图 viewport",
+    "expect_image": false,
+    "assert": [
+      {
+        "kind": "text_contains",
+        "value": "请提供网址"
+      }
+    ]
+  },
+  {
+    "label": "透明背景：PNG 保留 alpha 通道",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/alpha.html transparent",
+    "assert": [
+      {
+        "kind": "has_alpha",
+        "value": true
+      },
+      {
+        "kind": "corner_transparent",
+        "value": true
+      }
+    ]
+  },
+  {
+    "label": "默认（非 transparent）仍是白底 RGB",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/alpha.html",
+    "assert": [
+      {
+        "kind": "has_alpha",
+        "value": false
+      }
+    ]
+  },
+  {
+    "label": "透明背景元素截图不影响裁剪",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/alpha.html #tile transparent",
+    "assert": [
+      {
+        "kind": "has_alpha",
+        "value": true
+      },
+      {
+        "kind": "image_size",
+        "value": [
+          240,
+          120
+        ]
+      }
+    ]
+  },
+  {
+    "label": "元素截图 padding= 扩出留白（阴影不被切）",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/index.html #shadow-card padding=24",
+    "assert": [
+      {
+        "kind": "min_size",
+        "value": [
+          1550,
+          150
+        ]
+      }
+    ]
+  },
+  {
+    "label": "元素截图 + 水印：水印落在元素图内",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/index.html #shadow-card watermark=@bot padding=12",
+    "assert": [
+      {
+        "kind": "watermark_anywhere",
+        "value": true
+      }
+    ]
+  },
+  {
+    "label": "延迟挂载的图片：waitms 后不会截到占位图",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/index.html #lazy-slot waitms=900",
+    "assert": [
+      {
+        "kind": "color_present",
+        "value": [
+          255,
+          212,
+          59
+        ],
+        "min_pixels": 1500
+      },
+      {
+        "kind": "color_absent",
+        "value": [
+          222,
+          226,
+          230
+        ],
+        "max_pixels": 3000
+      }
+    ]
+  },
+  {
+    "label": "带引号属性的选择器：语法正确但无匹配 → 可读报错",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/index.html \"#main > p[class]\"",
+    "assert": [
+      {
+        "kind": "text_contains",
+        "value": "没有找到元素"
+      }
+    ],
+    "expect_image": false
+  },
+  {
+    "label": "max_height=0 本次不切片",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/index.html max_height=0",
+    "assert": [
+      {
+        "kind": "min_fragments",
+        "value": 1
+      }
+    ]
+  },
+  {
+    "label": "PDF 分页：切点落在段间而不是行中",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/index.html format=pdf",
+    "assert": [],
+    "expect_image": false
+  },
+  {
+    "label": "load 后一拍才变化的 DOM 能被默认观察窗口兜住",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/index.html #lazy-fast-slot",
+    "assert": [
+      {
+        "kind": "color_present",
+        "value": [
+          33,
+          37,
+          41
+        ],
+        "min_pixels": 1500
+      },
+      {
+        "kind": "color_absent",
+        "value": [
+          206,
+          212,
+          218
+        ],
+        "max_pixels": 1500
+      }
+    ]
+  },
+  {
+    "label": "显式视口：输出像素等于用户写的视口",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/index.html viewport 1280x800",
+    "assert": [
+      {
+        "kind": "image_size",
+        "value": [
+          1280,
+          800
+        ]
+      }
+    ]
+  },
+  {
+    "label": "显式视口 × scale=0.5：不放大也不缩小",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/index.html viewport 800x600 scale=0.5",
+    "assert": [
+      {
+        "kind": "image_size",
+        "value": [
+          800,
+          600
+        ]
+      }
+    ]
+  },
+  {
+    "label": "显式视口 × 手机预设：输出等于视口像素",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/index.html viewport 手机",
+    "assert": [
+      {
+        "kind": "image_size",
+        "value": [
+          390,
+          844
+        ]
+      }
+    ]
+  },
+  {
+    "label": "显式视口 × 分段长页：先分段后可视区仍按视口尺寸",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/long.html viewport 900x600 max_height=4000",
+    "assert": [
+      {
+        "kind": "image_size",
+        "value": [
+          900,
+          600
+        ]
+      }
+    ]
+  }
+]
