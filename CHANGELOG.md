@@ -3,7 +3,26 @@
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
-## [v0.4.0] — 未发布
+## [v0.5.0] — 未发布
+
+### 修复
+
+- **显式视口的出图多出一倍像素**：`/截图 x.com viewport 1280x800` 出图是
+  2560x1600 而不是 1280x800。根因是 `Page.captureScreenshot` 在设置了 device
+  metrics override 时返回 `视口 CSS 尺寸 × deviceScaleFactor` 的位图，而显式视口
+  内部统一按 DPR 2 描述，等于被放大两次。现在 `viewport` 模式会把位图按同一个
+  DPR 缩回 CSS 尺寸，「输出像素 = 你指定的视口像素」。（`iphone viewport` 这类
+  移动端隐藏多出的像素是既有行为，本次一并把用例期望值对齐为 390x844）
+- `Page.setDocumentContent` 之后补发的 metrics 改为「原样重设一份参数」，
+  不再走 `_apply_metrics`（后者会额外触发一次透明背景重设），渲染 HTML 更稳定
+
+### 新增
+
+- 4 条像素级回归：显式视口输出尺寸、`scale=0.5` 不缩放、手机预设 × 显式视口、
+  「先分段长页再截可视区」不复用被拉高的视口
+
+## [v0.4.0]
+
 
 ### 新增
 

@@ -246,8 +246,15 @@
       {
         "kind": "image_size",
         "value": [
-          1170,
-          2532
+          390,
+          844
+        ]
+      },
+      {
+        "kind": "min_size",
+        "value": [
+          390,
+          844
         ]
       }
     ]
@@ -260,8 +267,15 @@
       {
         "kind": "image_size",
         "value": [
-          1170,
-          2532
+          390,
+          844
+        ]
+      },
+      {
+        "kind": "min_size",
+        "value": [
+          390,
+          844
         ]
       }
     ]
@@ -474,6 +488,62 @@
           218
         ],
         "max_pixels": 1500
+      }
+    ]
+  },
+  {
+    "label": "显式视口：输出像素等于用户写的视口",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/index.html viewport 1280x800",
+    "assert": [
+      {
+        "kind": "image_size",
+        "value": [
+          1280,
+          800
+        ]
+      }
+    ]
+  },
+  {
+    "label": "显式视口 × scale=0.5：不放大也不缩小",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/index.html viewport 800x600 scale=0.5",
+    "assert": [
+      {
+        "kind": "image_size",
+        "value": [
+          800,
+          600
+        ]
+      }
+    ]
+  },
+  {
+    "label": "显式视口 × 手机预设：输出等于视口像素",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/index.html viewport 手机",
+    "assert": [
+      {
+        "kind": "image_size",
+        "value": [
+          390,
+          844
+        ]
+      }
+    ]
+  },
+  {
+    "label": "显式视口 × 分段长页：先分段后可视区仍按视口尺寸",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/long.html viewport 900x600 max_height=4000",
+    "assert": [
+      {
+        "kind": "image_size",
+        "value": [
+          900,
+          600
+        ]
       }
     ]
   }

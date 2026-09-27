@@ -266,21 +266,32 @@ class ScreenshotSession:
                 await conn.send("Emulation.setDefaultBackgroundColorOverride")
 
     async def _apply_metrics(self, conn: CDPConnection, opts: ShotOptions) -> None:
-        (width, height), preset_dpr, preset_mobile = viewport_for(opts.device)
-        dpr = normalise_scale(preset_dpr * opts.scale)
-        mobile = preset_mobile if opts.mobile is None else opts.mobile
         await conn.send(
             "Emulation.setDeviceMetricsOverride",
-            width=width,
-            height=height,
-            deviceScaleFactor=dpr,
-            mobile=mobile,
-            screenWidth=width,
-            screenHeight=height,
+            **self._metrics_params(opts),
         )
         await conn.send("Emulation.setEmulatedMedia", **self._media_params(opts))
         # setDocumentContent / 视口变更都会重置默认背景，这里每次都补齐
         await self._apply_transparency(conn, opts)
+
+    @staticmethod
+    def _metrics_params(opts: ShotOptions) -> dict:
+        """``Emulation.setDeviceMetricsOverride`` 的完整参数。
+
+        单独抽出来是为了**补发**：``Page.setDocumentContent`` 会重建渲染器并
+        丢掉 device metrics，所以那一处需要原样重设一次。
+        """
+        (width, height), preset_dpr, preset_mobile = viewport_for(opts.device)
+        dpr = normalise_scale(preset_dpr * opts.scale)
+        mobile = preset_mobile if opts.mobile is None else opts.mobile
+        return {
+            "width": width,
+            "height": height,
+            "deviceScaleFactor": dpr,
+            "mobile": mobile,
+            "screenWidth": width,
+            "screenHeight": height,
+        }
 
     @staticmethod
     def _media_params(opts: ShotOptions) -> dict:
@@ -338,7 +349,9 @@ class ScreenshotSession:
         # 踩过的坑：Page.setDocumentContent 会重建渲染器，丢掉 device metrics，
         # 页面便回落到 980px 宽的移动端默认视口，且浏览器会在画面顶部画出原生标题栏
         # （中文标题渲染成「????」豆腐块）。这里重发一次 metrics，把视口钉回来。
-        await self._apply_metrics(conn, opts)
+        await conn.send("Emulation.setDeviceMetricsOverride", **self._metrics_params(opts))
+        await conn.send("Emulation.setEmulatedMedia", **self._media_params(opts))
+        await self._apply_transparency(conn, opts)
         # setDocumentContent 不触发 load 事件，用 readyState 轮询代替
         deadline = asyncio.get_running_loop().time() + max(opts.timeout_ms, 1000) / 1000
         while asyncio.get_running_loop().time() < deadline:
@@ -697,7 +710,48 @@ class ScreenshotSession:
             optimizeForSpeed=False,
             **self._alpha_param(opts),
         )
-        return decode_frame(result)
+        return self._normalise_metrics_frame(decode_frame(result), opts)
+
+    def _normalise_metrics_frame(self, png: bytes, opts: ShotOptions) -> bytes:
+        """按 ``Emulation`` 里设定的 ``deviceScaleFactor`` 把截图缩回 CSS 尺寸。
+
+        单独抽出来是因为这是**实测出来的内核行为**，不是可选的优化：
+
+        ``Page.captureScreenshot`` 在**设置了 device metrics override** 时返回的位图
+        尺寸是 ``视口CSS尺寸 × deviceScaleFactor`` —— 实测 ``800x600 / dsf=2`` 出图
+        ``1600x1200``，``dsf=1`` 出图 ``800x600``。未设 override 时才是「按窗口 DPR
+        缩放」，实测默认窗口 ``780x437`` → 出图 ``780x437``。
+
+        于是 ``/截图 example.com viewport 1280x800`` 这种「显式视口」写法会**多出一倍
+        像素**（``1280x800`` 出 ``2560x1600``）：不是渲染错，是全链路统一用 DPR=2 描述
+        「显式视口」，而内核又按同一个 DPR 放大了一次。位图比预期大 4 倍还意味着
+        手机预设下的长图更容易撞到单张上限、被多切几段。
+
+        这里按同一个 DPR 还原，让「输出像素 = 用户指定的视口像素」成立，
+        与设备预设（``desktop`` 等自带 DPR 语义）的行为保持一致的直觉。
+        非 2 的整数倍缩放一律不动，避免把「DPR 不是整数、或裁剪已带 scale」的情形误缩。
+        """
+        (width, height), preset_dpr, _mobile = viewport_for(opts.device)
+        factor = normalise_scale(preset_dpr * opts.scale)
+        if factor <= 1 or abs(factor - round(factor)) > 1e-6:
+            return png
+        try:
+            with Image.open(io.BytesIO(png)) as frame:
+                frame.load()
+                expected = (max(1, int(round(width * factor))),
+                            max(1, int(round(height * factor))))
+                if frame.size != expected:
+                    return png
+                restored = frame.resize((width, height), Image.LANCZOS)
+                try:
+                    buffer = io.BytesIO()
+                    restored.save(buffer, format="PNG", optimize=True)
+                    return buffer.getvalue()
+                finally:
+                    restored.close()
+        except (OSError, ValueError):
+            logger.debug("视口截图尺寸还原失败，按原始位图返回")
+            return png
 
     async def _document_size(self, conn: CDPConnection,
                              opts: ShotOptions) -> tuple[int, int]:

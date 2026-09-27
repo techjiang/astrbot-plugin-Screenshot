@@ -130,7 +130,7 @@ apt-get update && apt-get install -y chromium fonts-noto-cjk fonts-noto-color-em
 | `iphone` | 390×844，DPR 3，移动端 | |
 | `android` | 412×915，DPR 3，移动端 | |
 | `pad` | 834×1112，DPR 2，移动端 | |
-| `1440x900` | 直接指定 CSS 视口尺寸（DPR 取 2） | |
+| `1440x900` | 直接指定 CSS 视口尺寸（内部按 DPR 2 渲染，出图仍是 1440×900） | |
 | `scale=2` / `2x` | 在设备 DPR 之上再放大，范围 0.2–4 | `1` |
 | `mobile=true` | 覆盖设备预设的移动端标记 | 跟随预设 |
 
@@ -219,6 +219,8 @@ apt-get update && apt-get install -y chromium fonts-noto-cjk fonts-noto-color-em
 - **缓存自动清理**：产物写在 `data/plugin_data/astrbot_plugin_screenshot/cache`，
   最多保留 120 个文件，本次刚写出的产物受保护不会被误删。
 - **首次使用有冷启动**：约 1–2 秒，之后单次截图通常在 1 秒内。
+- **出图像素 = 你指定的视口像素**：`/截图 example.com viewport 1280x800` 出图就是
+  1280×800。设备预设（`desktop`/`iphone` 等）自带 DPR 语义，出图会按预设的 DPR 放大。
 
 ## 效果
 
