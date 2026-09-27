@@ -100,7 +100,7 @@ class ScreenshotSession:
         try:
             await conn.send("Network.enable")
             await conn.send(
-                "Page.navigate", url=opts.url, timeout=timeout * 1000
+                "Page.navigate", url=opts.url
             )
 
             # 先等 load 事件，拿不到就退化成「等到没有新请求」
@@ -185,7 +185,7 @@ class ScreenshotSession:
         clip = None
         if full_page:
             metrics = await conn.send("Page.getLayoutMetrics")
-            css = metrics.get("cssContentSize") or metrics.get("contentSize") or {}
+            css = metrics.get("cssContentSize") or metrics.get("contentSize") or {}  # cssContentSize 更贴近视觉尺寸
             height = min(int(css.get("height", 0)) or 0, MAX_CAPTURE_HEIGHT)
             width = int(css.get("width", 0)) or 0
             if height and width:
