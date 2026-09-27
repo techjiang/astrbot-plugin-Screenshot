@@ -7,7 +7,10 @@
   "launch_flags": {
     "type": "list",
     "description": "追加到浏览器启动命令的参数",
-    "default": ["--disable-features=Translate", "--autoplay-policy=no-user-gesture-required"]
+    "default": [
+      "--disable-features=Translate",
+      "--autoplay-policy=no-user-gesture-required"
+    ]
   },
   "proxy": {
     "type": "string",
@@ -23,6 +26,11 @@
     "type": "int",
     "description": "同时进行的截图上限，超出自动排队",
     "default": 4
+  },
+  "max_dpr": {
+    "type": "float",
+    "description": "大图自动降 DPR 的上限（0 表示不降）。整页图本来就要分段时，降一档能显著减少分段与耗时",
+    "default": 0
   },
   "max_height": {
     "type": "int",

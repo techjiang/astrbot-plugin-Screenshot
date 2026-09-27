@@ -1,7 +1,7 @@
 name: astrbot_plugin_screenshot
 display_name: Screenshot
 desc: 新一代非 API 接口截图插件，只靠 CDP 驱动浏览器完成整页截图、元素截图、HTML 渲染与 PDF 输出。
-version: v0.2.0
+version: v0.3.0
 author: 科技酱
 repo: https://cnb.cool/asoe/TechSauce/astrbot-plugin-Screenshot
 astrbot_version: ">=4.0.0"

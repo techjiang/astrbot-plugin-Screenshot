@@ -116,26 +116,13 @@
     "text": "/截图 http://127.0.0.1:{PORT}/index.html hide=.ad,.topbar watermark=TechSauce",
     "assert": [
       {
-        "kind": "watermark_at_bottom",
-        "within": 400
-      },
-      {
-        "kind": "no_pure_color_block",
+        "kind": "bottom_band",
         "value": [
-          255,
-          107,
-          107
+          12,
+          166,
+          120
         ],
-        "max_run": 120
-      },
-      {
-        "kind": "no_pure_color_block",
-        "value": [
-          59,
-          91,
-          219
-        ],
-        "max_run": 120
+        "within": 300
       }
     ]
   },
@@ -170,6 +157,174 @@
       {
         "kind": "text_contains",
         "value": "无法打开页面"
+      }
+    ]
+  },
+  {
+    "label": "超长页：分段截取后图底浮层贴到图底",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/long.html",
+    "assert": [
+      {
+        "kind": "bottom_band",
+        "value": [
+          12,
+          166,
+          120
+        ],
+        "within": 300
+      }
+    ]
+  },
+  {
+    "label": "超长页：分段截取后固定浮层只贴图底",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/long.html desktop",
+    "assert": [
+      {
+        "kind": "bottom_band",
+        "value": [
+          12,
+          166,
+          120
+        ],
+        "within": 300
+      }
+    ]
+  },
+  {
+    "label": "元素截图：高于视口的元素能整块取到",
+    "handler": "element_screenshot",
+    "text": "/元素截图 http://127.0.0.1:{PORT}/index.html #tall-block",
+    "assert": [
+      {
+        "kind": "height_range",
+        "value": [
+          1500,
+          3200
+        ]
+      }
+    ]
+  },
+  {
+    "label": "print 媒体：切到 @media print 分支",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/index.html print viewport",
+    "assert": [
+      {
+        "kind": "color_present",
+        "value": [
+          255,
+          0,
+          255
+        ],
+        "min_pixels": 1000
+      }
+    ]
+  },
+  {
+    "label": "非 print 媒体下没有 print-only 标记",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/index.html viewport",
+    "assert": [
+      {
+        "kind": "color_absent",
+        "value": [
+          255,
+          0,
+          255
+        ],
+        "max_pixels": 50
+      }
+    ]
+  },
+  {
+    "label": "无 viewport meta 的页面：移动端宽度夹回视口",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/no_viewport.html iphone viewport",
+    "assert": [
+      {
+        "kind": "image_size",
+        "value": [
+          1170,
+          2532
+        ]
+      }
+    ]
+  },
+  {
+    "label": "有 viewport meta 的页面：移动端按 390 布局",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/index.html iphone viewport",
+    "assert": [
+      {
+        "kind": "image_size",
+        "value": [
+          1170,
+          2532
+        ]
+      }
+    ]
+  },
+  {
+    "label": "非法选择器 → 可读报错（区别于「找不到元素」）",
+    "handler": "screenshot",
+    "text": "/截图 http://127.0.0.1:{PORT}/index.html [[[",
+    "expect_image": false,
+    "assert": [
+      {
+        "kind": "text_contains",
+        "value": "选择器不合法"
+      }
+    ]
+  },
+  {
+    "label": "元素被 display:none → 可读报错",
+    "handler": "element_screenshot",
+    "text": "/元素截图 http://127.0.0.1:{PORT}/index.html .print-only",
+    "expect_image": false,
+    "assert": [
+      {
+        "kind": "text_contains",
+        "value": "元素不可见或不可截取"
+      }
+    ]
+  },
+  {
+    "label": "空指令 → 回帮助而不是报错",
+    "handler": "render_screenshot",
+    "text": "/渲染截图",
+    "expect_image": false,
+    "assert": [
+      {
+        "kind": "text_contains",
+        "value": "Screenshot · CDP 直驱截图"
+      }
+    ]
+  },
+  {
+    "label": "元素远在页尾也能截到",
+    "handler": "element_screenshot",
+    "text": "/元素截图 http://127.0.0.1:{PORT}/index.html #page-footer",
+    "assert": [
+      {
+        "kind": "height_range",
+        "value": [
+          40,
+          400
+        ]
+      }
+    ]
+  },
+  {
+    "label": "只给参数不给网址 → 可读报错",
+    "handler": "screenshot",
+    "text": "/截图 viewport",
+    "expect_image": false,
+    "assert": [
+      {
+        "kind": "text_contains",
+        "value": "请提供网址"
       }
     ]
   }

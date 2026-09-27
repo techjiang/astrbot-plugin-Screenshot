@@ -2,15 +2,13 @@ main:
   push:
     - stages:
         - name: 语法检查
-          script: |
-            python -m compileall -q .
-            echo "compileall done"
+          script: python -m compileall -q .
   pull_request:
     - stages:
         - name: 语法检查
-          script: |
-            python -m compileall -q .
-            echo "compileall done"
+          script: python -m compileall -q .
+        - name: 指令解析回归
+          script: python tests/test_parse.py
 
 $:
   tag_push:

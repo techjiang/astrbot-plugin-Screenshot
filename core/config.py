@@ -133,6 +133,7 @@ class ShotOptions:
     quality: int = 88
     max_height: int = 0  # 0 表示交给插件级配置决定
     light: bool = False  # 渲染 HTML 时套用浅色骨架
+    print_media: bool = False  # 是否切到 print 媒体查询
 
     @property
     def is_html(self) -> bool:
@@ -231,6 +232,9 @@ def parse_instruction(
         if lowered in ("light", "亮色", "浅色"):
             opts.light = True
             continue
+        if lowered in ("print", "打印", "打印样式"):
+            opts.print_media = True
+            continue
         if lowered in ("pdf",):
             opts.img_format = "pdf"
             continue
@@ -280,6 +284,8 @@ def _apply_kv(opts: ShotOptions, key: str, value: str) -> None:
         opts.scale = as_float(value, opts.scale, low=0.2, high=4)
     elif key in ("device", "viewport"):
         opts.device = DEVICE_ALIASES.get(value.lower(), value.lower())
+    elif key in ("print", "打印", "media"):
+        opts.print_media = parse_bool(value) or value.lower() == "print"
     elif key in ("mobile", "h5"):
         opts.mobile = parse_bool(value)
     elif key in ("dark", "theme"):

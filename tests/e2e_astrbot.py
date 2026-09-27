@@ -34,7 +34,7 @@ from astrbot.core.star.context import Context  # noqa: E402
 from astrbot.core.star.star_manager import PluginManager  # noqa: E402
 
 RESULTS: list[dict] = []
-SITE_PORT = int(os.environ.get("SHOT_SITE_PORT", "8899"))
+SITE_PORT = int(os.environ.get("SHOT_SITE_PORT", "8899"))  # main() 起站点时会自动改
 
 
 class _Stub:
@@ -166,7 +166,7 @@ def _check_assertions(case: dict, images: list[str], texts: list[str]) -> bool:
         if kind == "image_size":
             from PIL import Image
 
-            with Image.open(images[0]) as handle:
+            with Image.open(images[rule.get("index", 0)]) as handle:
                 if list(handle.size) != rule["value"]:
                     print(f"      ↳ 断言失败：尺寸 {handle.size} != {rule['value']}")
                     return False
@@ -194,6 +194,94 @@ def _check_assertions(case: dict, images: list[str], texts: list[str]) -> bool:
                 if _find_watermark_bottom(images[-1]) is None:
                     print("      ↳ 断言失败：整页图里找不到水印")
                     return False
+        if kind == "bottom_band":
+            # 页面底部的固定浮层必须出现在**图底**，不能跑到画面中部
+            from PIL import Image
+
+            target = rule["value"]
+            tolerance = rule.get("tolerance", 12)
+            within = rule.get("within", 260)
+            path = images[rule.get("index", -1)]
+            with Image.open(path) as handle:
+                image = handle.convert("RGB")
+            pixels = image.load()
+            width, height = image.size
+            found = None
+            for y in range(height - 1, -1, -1):
+                row = [pixels[x, y] for x in range(width // 2, width)]
+                hit = sum(
+                    1 for c in row
+                    if abs(c[0] - target[0]) < tolerance
+                    and abs(c[1] - target[1]) < tolerance
+                    and abs(c[2] - target[2]) < tolerance
+                )
+                # 浮层只占右下角一块：半幅宽度里至少命中 8 个采样点即认定
+                if hit >= 8:
+                    found = y
+                    break
+            if found is None:
+                print(f"      ↳ 断言失败：整页图里找不到图底固定浮层 {target}")
+                return False
+            if found < height - within:
+                print(f"      ↳ 断言失败：图底固定浮层在 y={found}，"
+                      f"图高 {height}，未贴到图底（阈值 {within}）")
+                return False
+        if kind == "color_present":
+            # 断言某颜色确实出现在图里（用于「print 媒体下才出现的标记」这类）
+            import numpy as np
+            from PIL import Image
+
+            with Image.open(images[0]) as handle:
+                arr = np.asarray(handle.convert("RGB")).astype(int)
+            target = rule["value"]
+            tolerance = rule.get("tolerance", 18)
+            hit = (
+                (abs(arr[:, :, 0] - target[0]) < tolerance)
+                & (abs(arr[:, :, 1] - target[1]) < tolerance)
+                & (abs(arr[:, :, 2] - target[2]) < tolerance)
+            ).sum()
+            if hit < rule.get("min_pixels", 200):
+                print(f"      ↳ 断言失败：颜色 {target} 只命中 {hit} 像素，"
+                      f"低于 {rule.get('min_pixels', 200)}")
+                return False
+        if kind == "color_absent":
+            import numpy as np
+            from PIL import Image
+
+            with Image.open(images[0]) as handle:
+                arr = np.asarray(handle.convert("RGB")).astype(int)
+            target = rule["value"]
+            tolerance = rule.get("tolerance", 18)
+            hit = (
+                (abs(arr[:, :, 0] - target[0]) < tolerance)
+                & (abs(arr[:, :, 1] - target[1]) < tolerance)
+                & (abs(arr[:, :, 2] - target[2]) < tolerance)
+            ).sum()
+            if hit > rule.get("max_pixels", 200):
+                print(f"      ↳ 断言失败：颜色 {target} 命中 {hit} 像素，"
+                      f"高于 {rule.get('max_pixels', 200)}")
+                return False
+        if kind == "height_range":
+            from PIL import Image
+
+            with Image.open(images[0]) as handle:
+                height = handle.height
+            low, high = rule["value"]
+            if not low <= height <= high:
+                print(f"      ↳ 断言失败：图高 {height} 不在 [{low}, {high}]")
+                return False
+        if kind == "total_height_range":
+            # 分段出图时按总高判定
+            from PIL import Image
+
+            total = 0
+            for path in images:
+                with Image.open(path) as handle:
+                    total += handle.height
+            low, high = rule["value"]
+            if not low <= total <= high:
+                print(f"      ↳ 断言失败：切片总高 {total} 不在 [{low}, {high}]")
+                return False
         if kind == "text_contains":
             joined = " ".join(texts)
             if rule["value"] not in joined:
@@ -230,10 +318,14 @@ def _check_assertions(case: dict, images: list[str], texts: list[str]) -> bool:
 async def run_case(plugin, case, site_dir):
     handler = getattr(plugin, case["handler"])
     text = case["text"].replace("{PORT}", str(SITE_PORT))
+    # 真实链路里 AstrBot 已经把命令名剥掉了，GreedyStr 只拿到后面的部分；
+    # 夹具要照做，否则 `/渲染截图`（后面什么都不带）会被当成有指令
+    parts = text.split(maxsplit=1)
+    instruction = parts[1] if len(parts) > 1 else ""
     event = FakeEvent(text)
     started = time.time()
     try:
-        async for _ in handler(event, instruction=text):
+        async for _ in handler(event, instruction=instruction):
             pass
     except Exception as exc:
         RESULTS.append({"label": case["label"], "cmd": text, "ok": False,
@@ -273,15 +365,32 @@ async def main() -> int:
     plugin = type(info.star_cls)(pm.context, {"browser_path": os.environ.get("SHOT_BROWSER", "")})
 
     site_dir = Path(os.environ.get("SHOT_SITE_DIR", "/tmp/shot_site"))
+    for source in sorted(HERE.glob("site_*.html")):  # site_index.html → index.html
+        (site_dir / source.name[len("site_"):]).write_bytes(source.read_bytes())
     if not (site_dir / "index.html").exists():
         print(f"缺少测试站点：{site_dir}/index.html")
         return 3
     from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
-    httpd = ThreadingHTTPServer(
-        ("127.0.0.1", SITE_PORT),
-        lambda *a, **k: SimpleHTTPRequestHandler(*a, directory=str(site_dir), **k),
-    )
+    # 端口被占用时自动往后找：跑完一次不留心清理、或并行跑两遍时，
+    # 老实现会直接 OSError: Address already in use，看不出真正原因
+    global SITE_PORT
+    site_port = SITE_PORT
+    httpd = None
+    for port in range(site_port, site_port + 20):
+        try:
+            httpd = ThreadingHTTPServer(
+                ("127.0.0.1", port),
+                lambda *a, **k: SimpleHTTPRequestHandler(*a, directory=str(site_dir), **k),
+            )
+            break
+        except OSError:
+            continue
+    if httpd is None:
+        print(f"端口 {site_port}~{site_port + 19} 都被占用，无法起测试站点")
+        return 3
+
+    SITE_PORT = httpd.server_address[1]
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     print(f"测试站点：http://127.0.0.1:{SITE_PORT}")
 

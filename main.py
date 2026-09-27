@@ -19,6 +19,7 @@ from astrbot.core.star.filter.command import GreedyStr
 from .core.browser import find_browser
 from .core.config import (
     ShotOptions,
+    as_float,
     as_int,
     load_extra_headers,
     parse_instruction,
@@ -58,6 +59,7 @@ class ScreenshotPlugin(Star):
                 proxy=str(self._conf("proxy", "") or ""),
                 headers=load_extra_headers(self.config),
                 max_concurrent=as_int(self._conf("max_concurrent", 4), 4, low=1, high=16),
+                max_dpr=as_float(self._conf("max_dpr", 0), 0.0, low=0.0, high=4.0),
             )
         return self._session
 
@@ -136,6 +138,8 @@ class ScreenshotPlugin(Star):
             opts = ShotOptions(mode="render")
             opts.url = instruction[5:].lstrip() if instruction.lower().startswith("html:") \
                 else instruction
+            if not opts.url.strip():
+                raise ValueError("请提供要渲染的 HTML，例如 /渲染截图 <h1>你好</h1>")
             opts.timeout_ms = as_int(self._conf("timeout_ms", 20000), 20000,
                                      low=1000, high=600000)
             return opts
@@ -143,8 +147,13 @@ class ScreenshotPlugin(Star):
         opts = parse_instruction(instruction, defaults=self.config)
         if mode == "element":
             opts.mode = "element"
+            opts.selector = opts.selector or ""
         if not opts.url:
             raise ValueError("请提供网址，例如 /截图 example.com")
+        # 元素模式必须先校验选择器，否则 `suggest_url` 会把
+        # `example.com #main` 里被空格切开的碎片拼成 URL，报出莫名其妙的域名错
+        if opts.mode == "element" and not opts.selector.strip():
+            raise ValueError("请提供 CSS 选择器，例如 /元素截图 example.com #main")
         opts.url = suggest_url(opts.url)
         if opts.mode == "element" and not opts.selector:
             raise ValueError("请提供 CSS 选择器，例如 /元素截图 example.com #main")

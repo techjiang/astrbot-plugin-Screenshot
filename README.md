@@ -56,6 +56,7 @@ Docker 部署时，使用自带 Chromium 的镜像，或在容器内安装上述
 /截图 <网址> wait=.loaded       等元素出现后再截
 /截图 <网址> format=jpeg        输出 JPEG（更小）
 /截图 <网址> format=pdf         输出 PDF（超长页面首选）
+/截图 <网址> print              切到 @media print（有的站点只在打印样式里去掉导航）
 /元素截图 <网址> <CSS选择器>    元素截图
 /渲染截图 <h1>你好</h1>         直接渲染 HTML 片段
 /截图帮助                       查看用法
@@ -74,6 +75,7 @@ Docker 部署时，使用自带 Chromium 的镜像，或在容器内安装上述
 | `scale=2` / `2x` | 在设备 DPR 之上再放大（上限 4 倍） | `1` |
 | `dark=true` / `light` | 模拟 `prefers-color-scheme` | `false` |
 | `mobile=true` | 覆盖设备预设的移动端标记 | 跟随预设 |
+| `print` | 切到 `@media print` 媒体查询 | `false` |
 | `selector=#id` | 元素截图选择器 | — |
 | `wait=.cls` | 等待该选择器出现 | — |
 | `waitms=800` | 固定延迟毫秒 | `0` |
@@ -110,15 +112,27 @@ Docker 部署时，使用自带 Chromium 的镜像，或在容器内安装上述
 | `full_page` | bool | 默认是否整页 |
 | `dark` | bool | 默认是否暗色 |
 | `timeout_ms` | int | 默认导航超时 |
+| `max_dpr` | float | 大图自动降到这个 DPR 以减少分段，`0` 表示不降 |
 
 ## 行为说明
 
 - **整页图过高会自动切片**：默认 6000px 一段，切片后仍超体积预算时重编码为 JPEG，
   避免聊天平台拒收；`format=pdf` 则不做切片，直接折成多页 PDF。
+- **超长页面分段截取再拼接**：单张位图高度有上限（32000px，按 DPR 折算成 CSS 高度），
+  超过就分段截图后纵向拼接，而不是把超出部分裁掉。
+- **`position:fixed` 元素贴在图底**：截图前会把运行时视口临时拉到页面高度，
+  视口底 == 文档底，右下角的固定浮层才会落在**图片底边**而不是画面中部。
+  多段截取时每条还会 `scrollTo` 到该段顶部，保证浮层落在对应那一段的底边。
+  同一个机制让 `position:sticky` 保持正常工作（早期「把 fixed 改成 absolute」的做法会两边都搞坏）。
+- **移动端布局遵循页面自己的 `viewport`**：页面写了
+  `<meta name="viewport" content="width=device-width">` 就按设备宽度排版；
+  没写则浏览器会落到 980px 默认包含块，此时截图宽度会夹回视口宽度，
+  避免整张图横向多出 2.5 倍（与浏览器自带「整页截图」的行为一致）。
 - **浏览器进程常驻**：插件加载时启动一次 Chromium，每次截图新开一个标签页、用完即关，
   插件卸载时连整个进程组一起回收；进程假死会自动重启后重试一次。
-- **等渲染有三级保险**：`load` 事件 → 网络静默 → 图片解码完成；
-  截到纯色空白图会自动重试（最多 3 次，指数退避）。
+- **等渲染不再是固定空等**：`load` 事件之后等的是「页面不再发新请求」
+  （安静 350ms），而不是固定等满一个窗口。断不掉的长轮询/SSE 也不会把截图拖住。
+  之后还会等图片解码完成；截到纯色空白图会自动重试（最多 3 次，指数退避）。
 - **缓存自动清理**：输出落在插件数据目录的 `cache/`，最多保留 120 张。
 - **首次使用有冷启动**：约 1–2 秒，之后单次截图通常在 1 秒内。
 
@@ -138,11 +152,14 @@ core/image.py        长图切片、重编码、PDF 封装、HTML 包装
 
 ## 已验证
 
-在 AstrBot 4.14.6 + Chromium 153（headless）下逐项实测：
+在 AstrBot 4.14.6 + Chromium 153（headless）下逐项实测，25 个用例全部做像素级断言：
 
 - 整页长图、可视区、元素截图、HTML 渲染、PDF 输出五类模式均产出正确文件
 - `iphone` 预设 × `scale` × `watermark` × `hide` × `wait` × `format` 组合参数生效
 - 超过 6000px 的长图按预期切片，超体积自动转 JPEG
+- 45000px 超长页分段截取后完整拼接，图底固定浮层落点正确
+- 高于视口的元素能整块截到；`print` 媒体正/反两条
+- 有 / 无 `viewport` meta 的移动端布局分别符合预期
 - 指令参数由 AstrBot 的 `GreedyStr` 完整透传，含引号与空格的 HTML 片段不被切碎
 
 ## 关于作者
@@ -165,10 +182,13 @@ core/image.py        长图切片、重编码、PDF 封装、HTML 包装
 
 ```bash
 # 需要系统里已装 chromium；ASTRBOT_ROOT 指向一个 AstrBot 数据目录
-ASTRBOT_ROOT=/tmp/ab SHOT_SITE_DIR=tests python3 tests/e2e_astrbot.py
+ASTRBOT_ROOT=/tmp/ab SHOT_SITE_DIR=/tmp/shot_site python3 tests/e2e_astrbot.py
 ```
 
-当前基线：**AstrBot 4.14.6 + Chromium 153 headless，18/18 用例通过。**
+脚本会把 `tests/site_*.html` 拷进站点目录（`site_index.html` → `index.html`），
+并在 8899 起端口被占用时自动往后找空闲端口。
+
+当前基线：**AstrBot 4.14.6 + Chromium 153 headless，25/25 用例通过。**
 
 ### 实测中修掉的缺陷
 
@@ -176,14 +196,22 @@ ASTRBOT_ROOT=/tmp/ab SHOT_SITE_DIR=tests python3 tests/e2e_astrbot.py
 
 | 现象 | 根因 |
 | --- | --- |
-| `position:fixed` 元素在最底部又出现一次 | `captureBeyondViewport` 会把 fixed 元素渲染到长图末尾，全页截图前需钉回页首 |
+| 整页长图里右下角固定浮层跑到**画面中部** | `captureBeyondViewport` 只扩大截取范围，布局视口没变，`position:fixed` 仍按视口底定位（6000px 文档 + 600px 视口 → 浮层落在 y=552）。改法：截图前把视口拉到文档高 |
+| 「把 fixed 改成 absolute 再钉回页首」没修好还引入新问题 | 页面无定位祖先时 `absolute` 仍相对初始包含块解析，改成绝对坐标后像素**完全没变**；写死 `width` 还会在滚动条出现时切掉十几 px，并顺带破坏 `sticky` |
+| 每次截图白等 800ms | 「连续 N 毫秒没有请求完成」判据在**页面已全部加载、零请求**时永远等满窗口；改成 inflight 计数 |
+| 长轮询页面单次截图要 9 秒 | 只盯 inflight 归零也不行：cnb.cool 挂着断不掉的请求，inflight 卡在 1，6 秒静默上限被整段耗光；判据改为「最近没有**新请求**发出」 |
+| 每张截图再白等 2 秒 | 图片等待给每张图都挂了 `setTimeout(..., 2000)`，页面里只要有一张永远加载不完的图就陪等满；改成只在真有未解码图片时才等，且整段有上限 |
+| 超长页被静默砍掉 | 超过单张上限直接裁；改为分段截取 + 纵向拼接 |
+| 手机预设整张图横向多出 2.5 倍 | 页面没写 `viewport` meta 时移动端落到 980px 默认包含块，`Emulation` 的 390 只在包含块宽度上生效 → 位图 3920px 宽且版面全错 |
 | 同一会话连续截图互相覆盖 | 缓存文件名只用 `session_序号`，`_persist` 每次写同一路径 |
 | 刚写出的产物可能被缓存清理删掉 | `_cleanup_cache` 按数量裁剪时不认识「本次产物」 |
 | HTML 渲染出的图顶部多一条乱码标题栏 | `Page.setDocumentContent` 会重建渲染器并丢掉 device metrics，视口回落、浏览器画出原生标题栏 |
 | 整页长图里水印跑到画面正中并盖住正文 | 水印用 `position:fixed`，只贴视口底而非文档底 |
 | 打水印后整页图里找不到水印 | 改 `absolute` 后仍相对初始包含块解析（页面无定位祖先），`top:文档高度` 被挤出画面 |
-| 手机预设下长图末尾整片纯白 | `MAX_CAPTURE_HEIGHT` 按 CSS 像素限制，`dpr=3` 时实际位图高度翻 3 倍，超出部分 CDP 只返回空白 |
-| `hide=.ad` 生效但长图仍有色块 | 其实是 emoji 同色像素干扰了肉眼判断；后由像素级断言区分「实心色块」与「零散笔画」 |
+| 元素截图遇到超视口元素会拿到半张空白 | 元素也可能高过单张上限；现在夹到上限并记日志，并修正 `left/top` 为负时的越界裁剪 |
+| `Page.navigate` 的超时与「等页面稳定」混在一起 | 导航超时被塞进调用方的整页预算，两者应各自独立 |
+| 测试脚本端口被占用时只报 `Address already in use` | 起站点时不避让；现在自动往后找空闲端口 |
+| emoji 同色像素被误判成「未隐藏的色块」 | 靠肉眼判断不可靠；改用「最长水平连续游程」的像素级断言区分实心色块与零散笔画 |
 
 ## License
 
