@@ -6,12 +6,11 @@ Playwright / Selenium / html2image 这类封装库，因此没有浏览器驱动
 
 from __future__ import annotations
 
-import logging
 import re
 import time
 from pathlib import Path
 
-from astrbot.api import AstrBotConfig
+from astrbot.api import AstrBotConfig, logger
 from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.star import Context, Star, StarTools
 from astrbot.core.star.filter.command import GreedyStr
@@ -28,7 +27,6 @@ from .core.config import (
 from .core.image import detect_mime, suggest_suffix, to_bytes, wrap_html
 from .core.session import ScreenshotError, ScreenshotSession
 
-logger = logging.getLogger("astrbot.screenshot")
 
 # 缓存文件最多保留这么多张，避免长期运行把磁盘写满
 CACHE_KEEP = 120

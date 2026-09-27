@@ -10,7 +10,6 @@ import asyncio
 import base64
 import contextlib
 import json
-import logging
 import os
 import shutil
 import signal
@@ -24,7 +23,8 @@ from urllib.parse import quote, urlsplit, urlunsplit
 
 import aiohttp
 
-logger = logging.getLogger("astrbot.screenshot")
+from astrbot.api import logger
+
 
 # 容器里跑 Chromium 的常见姿势：禁沙箱 + 关 /dev/shm 依赖
 DEFAULT_FLAGS = [

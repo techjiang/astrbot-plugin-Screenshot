@@ -198,6 +198,18 @@ if logo_path.is_file():
                ratio < 0.25, f"半透明占比 {ratio:.1%}")
             ok("Logo 缩到 64px 后仍有可见主体（> 15% 画布）",
                len(alphas) / (64 * 64) > 0.15, f"{len(alphas) / (64 * 64):.1%}")
+
+            # 插件卡片在窄屏下会缩到 32px 上下，这里再兜一层：
+            # 主体必须占满画布，不能因为图源留白多而在小尺寸下缩成一小块。
+            tiny = im.convert("RGBA").resize((32, 32), Image.LANCZOS)
+            tiny_alphas = [a for r, g, b, a in tiny.getdata() if a > 0]
+            tiny_ratio = len(tiny_alphas) / (32 * 32)
+            ok("Logo 缩到 32px 后主体仍占 > 30% 画布",
+               tiny_ratio > 0.30, f"{tiny_ratio:.1%}")
+            tiny_faded = sum(1 for a in tiny_alphas if a < 240)
+            tiny_faded_ratio = tiny_faded / max(1, len(tiny_alphas))
+            ok("Logo 缩到 32px 后没有大面积糊掉（< 45%）",
+               tiny_faded_ratio < 0.45, f"半透明占比 {tiny_faded_ratio:.1%}")
     else:
         print("[SKIP] 未安装 Pillow，跳过图像校验")
 

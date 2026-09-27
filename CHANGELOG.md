@@ -3,6 +3,32 @@
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [v0.5.2] — 2026-09-27
+
+### 修复
+
+- **`from astrbot.api import logger`：插件内不再使用 Python 内置 `logging`**
+  （`main.py` / `core/browser.py` / `core/session.py`）：三处此前都是
+  `import logging` + `logging.getLogger("astrbot.screenshot")`，属于插件规范里
+  明确禁止的写法，AstrBot 商店自动安全检查因此拒绝上架（LLM Guard，v0.5.1）。
+  现在统一改为 `from astrbot.api import logger`，日志仍交由 AstrBot 的日志系统
+  收口，级别与输出目标与主程序一致。三处调用点（`warning` / `info` / `debug` /
+  `exception`）语义不变。
+- **Logo 仍是官方默认图标 / 小尺寸下看不清**：Logo 此前只存在于仓库的 `assets/`，
+  平台各前端（仓库页图标、插件卡片）并不会去读它。
+  - 新增 `.cnb/logo.png`（128×128）：CNB 仓库页面按约定读取 `.cnb/logo.png`，
+    此前缺失，仓库页才会回落到平台默认图标。
+  - `assets/logo.png` / `logo-128` / `logo-256` / `logo-512` 统一从横幅图按固定
+    裁切框重出：只保留图标方块本体（去掉 `v2.0` 角标与 `AstrBot` 字条），
+    裁掉的留白不再让主体在小尺寸下被压成一小团。
+  - 新增 `assets/icon-96.png` 方形 favicon，主体裁得更紧，48px 以下仍能看清。
+  - `metadata.yaml` 的 `logo` 仍指向 `assets/logo.png`（256×256 透明 PNG），未变。
+
+### 新增
+
+- `tests/test_metadata.py` 增加两条 32px 级渲染断言（主体 > 30% 画布、
+  糊掉区域 < 45%），把「24–32px 下是否还认得出」纳入回归，而不只测到 64px。
+
 ## [v0.5.1] — 2026-09-27
 
 ### 修复

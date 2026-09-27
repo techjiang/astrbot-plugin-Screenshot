@@ -6,10 +6,11 @@ import asyncio
 import contextlib
 import io
 import json
-import logging
 
 import aiohttp
 from PIL import Image
+
+from astrbot.api import logger
 
 from .browser import (
     MAX_CONCURRENT_PAGES,
@@ -21,7 +22,6 @@ from .browser import (
 from .config import ShotOptions, viewport_for
 from .image import normalise_scale
 
-logger = logging.getLogger("astrbot.screenshot")
 
 MAX_CAPTURE_HEIGHT = 32000  # 单张位图的高度上限（按 DPR 折算成 CSS 后才能用），
                             # 超过就分段截取再拼接

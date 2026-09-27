@@ -10,7 +10,7 @@
 
 说 Chrome DevTools Protocol，不说 Playwright / Selenium / html2image
 
-[![version](https://img.shields.io/badge/version-v0.5.1-2ea44f)](https://github.com/techjiang/astrbot-plugin-Screenshot/releases)
+[![version](https://img.shields.io/badge/version-v0.5.2-2ea44f)](https://github.com/techjiang/astrbot-plugin-Screenshot/releases)
 ![AstrBot](https://img.shields.io/badge/AstrBot-%3E%3D4.0.0-6C5CE7)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB)
 ![License](https://img.shields.io/badge/License-MIT-green)
@@ -29,14 +29,19 @@
 | `assets/logo-256.png` | 256×256 | 同 `logo.png`，供需要固定文件名的场景引用 |
 | `assets/logo-512.png` | 512×512 | 高清头像（文档站、活动页） |
 | `assets/logo-128.png` | 128×128 | 小尺寸头像 |
+| `assets/icon-96.png` | 96×96 | 方形 favicon（主体裁得更紧，48px 以下仍能看清） |
 | `assets/logo-banner.png` | 1280×720 | README 顶部横幅（图标 + 标题 + 副标题） |
+| `.cnb/logo.png` | 128×128 | CNB 仓库页面图标 |
+
+图标本体均从 `assets/logo-banner.png` 里按固定裁切框现裁，不再让同一张图被不同尺寸重复缩放：
+不同前端拿到的都是「够满」的方形画布，缩到 24–48px 时主体占比仍然够大。
 
 源图是作者提供的一张 1024×1024 无背景整图（图标 + 两行标题）。**头像与横幅是两种用途，
 不要混用**：商店头像只取图标本体，因为列表里只有 40px 上下，塞进标题文字会糊成一片；
 整行标题留给横幅。
 
 ```bash
-python tests/test_metadata.py    # 校验头像几何、alpha、以及「缩到 64px 是否还看得清」
+python tests/test_metadata.py    # 校验头像几何、alpha、以及「缩到 64px / 32px 是否还看得清」
 ```
 
 ## 这是什么
