@@ -3,6 +3,8 @@ main:
     - stages:
         - name: 语法检查
           script: python -m compileall -q .
+        - name: metadata 自检
+          script: python tests/test_metadata.py
   pull_request:
     - stages:
         - name: 语法检查
@@ -11,6 +13,8 @@ main:
           script: python tests/test_parse.py
         - name: 文档一致性检查
           script: python tests/test_docs.py
+        - name: metadata 自检
+          script: python tests/test_metadata.py
 
 $:
   tag_push:
@@ -18,7 +22,7 @@ $:
         - name: 自动打标签
           image: cnbcool/git-auto-tag:latest
           settings:
-            tagFormat: v\${version}
+            tagFormat: v${version}
             branch: $CNB_BRANCH
             repoUrlHttps: $CNB_REPO_URL_HTTPS
           exports:
