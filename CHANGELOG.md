@@ -11,14 +11,19 @@
   （`.cnb.yml`）：`tests/test_parse.py` 虽然只测纯函数，但经 `core.image` /
   `core.session` **间接 import PIL**，构建镜像里没装 `requirements.txt`，import
   阶段就炸，后面两个 Stage 连带被跳过。现在该 Stage 先装依赖再跑检查。
-- **脚本写的是 `python ...`，但构建镜像里只有 `python3`**，没有 `python` 这个软链，
-  会以 127（command not found）失败。脚本统一改用 `python3`，不再依赖构建机默认 PATH。
+- **默认构建镜像里没有 Python**：脚本写 `python ...`，但镜像里既没有 `python`
+  也没有 `python3`（`sh: python3: command not found`，127），`语法检查` Stage 直接红。
+  现在 Pipeline 级固定 `python:3.11-slim-bookworm` 镜像，脚本统一用 `python3`，
+  不再依赖构建机默认 PATH。
+- **镜像要选 `bookworm` 变体**：`python:3.11-slim`（trixie 底）要 `GLIBC_2.38`，
+  跟 runner 宿主对不上，Stage 瞬间 error、且错误信息里看不到 Python 本身的报错。
+  `python:3.11-slim-bookworm` 可正常执行。
 - **`tests/test_metadata.py` 的图像断言会被静默跳过**：该文件在缺 Pillow 时打
   `[SKIP] 未安装 Pillow` 后仍以 0 退出，等于新增的「Logo 缩到 64px 糊不糊」
   断言白写。新增 `--require-pillow` 开关，CI 一律带上，缺依赖即 FAIL。
 - **CI 的 `A && B` 写法有假绿风险**：CNB 的 `script` 每段新建 shell，`pip install`
   作最后一条命令时以 0 收尾；若某镜像里 pip 缺失（打印 127 仍退出 0，CNB 不按 127
-  判错），`&&` 后的检查会被整个跳过、Stage 变绿。改为多行 + 分号，检查一定执行。
+  判错），`&&` 后的检查会被整个跳过、Stage 变绿。改为多行，让检查一定执行，由检查自己决定 Stage 成败。
 - **商店头像缩到小尺寸后糊成一片**：`assets/logo.png` 直接用了作者提供的整图
   （图标 + `Screenshot` + `AstrBot Plugin` 两行标题）缩到 256×256，商店列表与
   插件卡片里只有 40px 上下，标题文字退化成一片灰雾，看起来像图没渲染好。
