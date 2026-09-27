@@ -2,7 +2,7 @@
 
 <img src="assets/logo-banner.png" alt="Screenshot · AstrBot Plugin" width="320">
 
-<sub>商店头像 / 仓库图标：<a href="assets/logo.png"><code>assets/logo.png</code></a>（256×256 透明 PNG，只用图标本体）</sub>
+<sub>商店头像：<a href="logo.png"><code>logo.png</code></a>（256×256 透明 PNG，只用图标本体）</sub>
 
 # Screenshot
 
@@ -25,13 +25,36 @@
 
 | 文件 | 尺寸 | 用途 |
 | --- | --- | --- |
-| `assets/logo.png` | 256×256 | **AstrBot 商店头像 / 仓库图标**，`metadata.yaml` 的 `logo` 指向它 |
+| `logo.png` | 256×256 | **AstrBot 实际读取的插件 Logo**，必须是这个路径（见下） |
+| `assets/logo.png` | 256×256 | 与根目录同源同内容，供文档与仓库页引用 |
 | `assets/logo-256.png` | 256×256 | 同 `logo.png`，供需要固定文件名的场景引用 |
 | `assets/logo-512.png` | 512×512 | 高清头像（文档站、活动页） |
 | `assets/logo-128.png` | 128×128 | 小尺寸头像 |
 | `assets/icon-96.png` | 96×96 | 方形 favicon（主体裁得更紧，48px 以下仍能看清） |
 | `assets/logo-banner.png` | 1280×720 | README 顶部横幅（图标 + 标题 + 副标题） |
 | `.cnb/logo.png` | 128×128 | CNB 仓库页面图标 |
+
+### Logo 路径是有讲究的：必须在插件根目录
+
+AstrBot 只在**插件目录根**按固定文件名找 Logo，源码里就是一句：
+
+```python
+self.logo_fname = "logo.png"
+logo_path = os.path.join(plugin_dir_path, self.logo_fname)
+if os.path.exists(logo_path):
+    metadata.logo_path = logo_path
+```
+
+所以：
+
+- 根目录**必须**有 `logo.png`。放成 `assets/logo.png` 不会被读到 —— 此时
+  `metadata.logo_path` 是 `None`，WebUI 与商店卡片只能回落到官方默认图标，
+  **表现就是「怎么改 Logo 都不显示」**。
+- `metadata.yaml` 里的 `logo:` 字段不是 AstrBot 的读取来源（它是提交商店时的描述字段），
+  改它不会让头像生效。
+- `tests/test_metadata.py` 会硬性校验根目录 `logo.png` 存在、且与 `assets/logo.png`
+  逐字节一致，防止有人「整理目录」把它挪走。同时 `.gitignore` 里为它单独放行
+  （`*/png` 全局忽略 + `!/logo.png`），否则它会被静默排除、压根不进仓库。
 
 图标本体均从 `assets/logo-banner.png` 里按固定裁切框现裁，不再让同一张图被不同尺寸重复缩放：
 不同前端拿到的都是「够满」的方形画布，缩到 24–48px 时主体占比仍然够大。

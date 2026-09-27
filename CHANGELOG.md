@@ -19,20 +19,37 @@
   现在统一改为 `from astrbot.api import logger`，日志仍交由 AstrBot 的日志系统
   收口，级别与输出目标与主程序一致。三处调用点（`warning` / `info` / `debug` /
   `exception`）语义不变。
-- **Logo 仍是官方默认图标 / 小尺寸下看不清**：Logo 此前只存在于仓库的 `assets/`，
-  平台各前端（仓库页图标、插件卡片）并不会去读它。
-  - 新增 `.cnb/logo.png`（128×128）：CNB 仓库页面按约定读取 `.cnb/logo.png`，
-    此前缺失，仓库页才会回落到平台默认图标。
+- **Logo 不显示（显示为官方默认图标）—— 根因是路径**：AstrBot 只在**插件目录根**
+  按固定文件名找 Logo，源码是 `logo_path = os.path.join(plugin_dir_path, "logo.png")`。
+  此前 Logo 只放在 `assets/` 下，根目录没有 `logo.png`，于是
+  `metadata.logo_path` 恒为 `None`，WebUI 与商店卡片只能回落成官方默认图标。
+  用真 AstrBot 4.14.6 的 `PluginManager` 实测：
+
+  ```
+  加根目录 logo.png 之前 -> logo_path = None
+  加根目录 logo.png 之后 -> logo_path = .../astrbot_plugin_screenshot/logo.png
+  ```
+
+  - **新增根目录 `logo.png`**（256×256 RGBA），与 `assets/logo.png` 逐字节一致。
+  - `.gitignore` 为它单独放行（`!/logo.png`）—— 全局 `*.png` 规则会把它静默排除，
+    不进仓库等于没修。
+  - 澄清一个容易走偏的点：`metadata.yaml` 的 `logo:` 字段**不是** AstrBot 的读取来源，
+    改它不会让头像生效。
+
+- **小尺寸下 Logo 糊成一片**：
   - `assets/logo.png` / `logo-128` / `logo-256` / `logo-512` 统一从横幅图按固定
     裁切框重出：只保留图标方块本体（去掉 `v2.0` 角标与 `AstrBot` 字条），
     裁掉的留白不再让主体在小尺寸下被压成一小团。
   - 新增 `assets/icon-96.png` 方形 favicon，主体裁得更紧，48px 以下仍能看清。
-  - `metadata.yaml` 的 `logo` 仍指向 `assets/logo.png`（256×256 透明 PNG），未变。
+  - 新增 `.cnb/logo.png`（128×128）供 CNB 仓库页面使用。
 
 ### 新增
 
 - `tests/test_metadata.py` 增加两条 32px 级渲染断言（主体 > 30% 画布、
   糊掉区域 < 45%），把「24–32px 下是否还认得出」纳入回归，而不只测到 64px。
+- `tests/test_metadata.py` 增加根目录 `logo.png` 断言：文件必须存在、为正方形透明 PNG、
+  且与 `assets/logo.png` 逐字节一致。这三条直接对应上文的根因，防止「整理目录」
+  把 Logo 又挪回 `assets/` 里而静默失效。已反向验证：移除根目录 `logo.png` 即 FAIL。
 - `tests/test_docs.py` 增加日志写法守卫：三个源码文件不得出现内置 `logging`、
   必须从 `astrbot.api` 取 `logger`，文档里也不得再提内置日志时代的自建命名空间
   —— 把「改完代码忘了改文档」这类回退也拦在 CI 里。

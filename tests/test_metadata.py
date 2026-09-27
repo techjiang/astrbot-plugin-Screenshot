@@ -256,6 +256,45 @@ if logo_path.is_file():
     else:
         print("[SKIP] 未安装 Pillow，跳过图像校验")
 
+# ---------- 7a) AstrBot 读取 Logo 的真实约定 ----------
+#
+# 这一节是「商店/WebUI 里看不到插件 Logo，只显示官方默认图标」的根因拦截。
+#
+# AstrBot 的 PluginManager 只在**插件目录根**找固定文件名，源码里是：
+#
+#     self.logo_fname = "logo.png"
+#     logo_path = os.path.join(plugin_dir_path, self.logo_fname)
+#     if os.path.exists(logo_path):
+#         metadata.logo_path = logo_path
+#
+# 也就是说：`assets/logo.png` 不管放得多整齐都没用，`metadata.yaml` 里的 `logo:`
+# 字段也不是 AstrBot 的读取来源（那是提交商店时用的描述字段）。只要根目录没有
+# `logo.png`，`metadata.logo_path` 就是 None，WebUI 与商店卡片只能回落到默认图标。
+#
+# 已经用真 AstrBot 4.14.6 的 PluginManager 实测过：
+#   加根目录 logo.png 之前 -> logo_path = None
+#   加根目录 logo.png 之后 -> logo_path = .../astrbot_plugin_screenshot/logo.png
+#
+# 所以这里必须硬性要求根目录存在 `logo.png`，且与 `assets/logo.png` 同源同内容，
+# 避免以后有人「整理目录」把它挪回 assets/ 里，Logo 又静默消失。
+
+root_logo = ROOT / "logo.png"
+ok("插件根目录存在 logo.png（AstrBot 固定读取此路径）", root_logo.is_file(),
+   "AstrBot PluginManager 只认 <插件目录>/logo.png；缺少它时 metadata.logo_path 为 None，"
+   "WebUI 与商店卡片会回落成官方默认图标")
+
+if root_logo.is_file() and Image is not None:
+    with Image.open(root_logo) as rim:
+        ok("根目录 logo.png 是正方形", rim.width == rim.height, f"{rim.width}x{rim.height}")
+        ok("根目录 logo.png 带 alpha 通道", rim.mode in ("RGBA", "LA"), rim.mode)
+
+# 根目录 logo.png 与 assets/logo.png 必须同源，避免两处各自演化
+assets_logo = ROOT / "assets" / "logo.png"
+if root_logo.is_file() and assets_logo.is_file():
+    ok("根目录 logo.png 与 assets/logo.png 内容一致",
+       root_logo.read_bytes() == assets_logo.read_bytes(),
+       "两份 Logo 已分叉；请从同一源图重出，避免商店头像与仓库头像不一致")
+
 # ---------- 7b) 横幅图 ----------
 
 banner = ROOT / "assets" / "logo-banner.png"

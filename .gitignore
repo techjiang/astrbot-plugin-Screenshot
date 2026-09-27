@@ -7,4 +7,6 @@ data/
 *.jpg
 !assets/*.png
 !.cnb/*.png
+# 插件根目录的 logo.png 是 AstrBot 固定读取的 Logo 路径，必须入库
+!/logo.png
 !tests/*_asset.png
