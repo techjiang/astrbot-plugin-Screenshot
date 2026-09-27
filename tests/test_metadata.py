@@ -173,10 +173,34 @@ if logo_path.is_file():
                 px = im.convert("RGBA").load()
                 corners = [px[0, 0], px[im.width - 1, 0], px[0, im.height - 1], px[im.width - 1, im.height - 1]]
                 ok("Logo 四角全透明", all(c[3] == 0 for c in corners), str(corners))
+
+            # 商店列表、插件卡片里会把这个文件缩到 40px 上下显示，
+            # 「能打开」不等于「看得清」。这类问题只能从渲染侧反推：
+            # 缩图里「已经糊掉的区域」占比 = 半透明像素的比例。
+            # 正常图标缩下去是实心色块或干净镂空；塞了小字 / 细线的图，
+            # 细笔画被均值稀释成大片半透明灰，看着就像渲染坏了。
+            small = im.convert("RGBA").resize((64, 64), Image.LANCZOS)
+            alphas = [a for r, g, b, a in small.getdata() if a > 0]
+            faded = sum(1 for a in alphas if a < 240)
+            ratio = faded / max(1, len(alphas))
+            ok("Logo 缩到 64px 后主体仍然实心（糊掉区域 < 25%）",
+               ratio < 0.25, f"半透明占比 {ratio:.1%}")
+            ok("Logo 缩到 64px 后仍有可见主体（> 15% 画布）",
+               len(alphas) / (64 * 64) > 0.15, f"{len(alphas) / (64 * 64):.1%}")
     else:
         print("[SKIP] 未安装 Pillow，跳过图像校验")
-        if im is not None:
-            pass
+
+# ---------- 7b) 横幅图 ----------
+
+banner = ROOT / "assets" / "logo-banner.png"
+ok("横幅图 assets/logo-banner.png 存在", banner.is_file())
+if banner.is_file() and Image is not None:
+    with Image.open(banner) as bim:
+        ok("横幅图带 alpha 通道", bim.mode in ("RGBA", "LA"), bim.mode)
+        ok("横幅图四角透明",
+           all(bim.convert("RGBA").getpixel(pt)[3] == 0
+               for pt in ((0, 0), (bim.width - 1, 0), (0, bim.height - 1),
+                          (bim.width - 1, bim.height - 1))))
 
 # ---------- 8) desc 内容 ----------
 

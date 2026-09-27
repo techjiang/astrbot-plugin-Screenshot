@@ -3,7 +3,26 @@
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
-## [v0.5.0] — 未发布
+## [v0.5.1] — 未发布
+
+### 修复
+
+- **商店头像缩到小尺寸后糊成一片**：`assets/logo.png` 直接用了作者提供的整图
+  （图标 + `Screenshot` + `AstrBot Plugin` 两行标题）缩到 256×256，商店列表与
+  插件卡片里只有 40px 上下，标题文字退化成一片灰雾，看起来像图没渲染好。
+  现在头像**只取图标本体**，标题交给 `assets/logo-banner.png` 横幅。
+- **`assets/logo-banner.png` 是正方形**：README 顶部按 `width=320` 展示，正方形图
+  带着大片空白，视觉上偏小；改为 1280×720 的透明横幅。
+- `assets/logo-128.png` / `logo-512.png` 与 `logo.png` 不再是同一张图的缩放
+  （此前 128 与 512 是另一次渲染，细节与 256 对不上）。
+
+### 新增
+
+- `tests/test_metadata.py` 增加 3 条 Logo 渲染侧断言：头像必须**只命中图标本体**
+  （缩到 64px 后半透明「糊掉区域」< 25%、可见主体 > 15% 画布），横幅必须存在、
+  带 alpha、四角透明。反向验证过：拿旧头像跑必然 FAIL（半透明占比 35.5%）。
+
+## [v0.5.0] — 2026-09-27
 
 ### 修复
 

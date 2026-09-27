@@ -12,7 +12,7 @@ desc: |
   /截图 <网址> [viewport | 选择器] [设备] [scale=2] [dark] [transparent] [format=pdf]
   /元素截图 <网址> <CSS选择器>
   /渲染截图 <HTML片段>
-version: 0.5.0
+version: 0.5.1
 author: 科技酱
 repo: https://github.com/techjiang/astrbot-plugin-Screenshot
 astrbot_version: ">=4.0.0"
