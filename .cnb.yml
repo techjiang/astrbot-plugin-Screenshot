@@ -53,42 +53,44 @@ main:
         - name: metadata 自检
           script: |
             python3 -m pip install -r requirements.txt
-            python3 tests/test_metadata.py --require-pillow
-$:
-  # 打 Release 时自动产出可直接上架的安装包。
+            python3 tests/test_metadata.py --require-pillow$:
+  # 打 tag 时自动产出可直接上架的安装包，并挂到同名 Release 上。
   #
   # 为什么要有这一段：AstrBot 商店提交的是一个 zip，而 zip 的结构决定插件
   # 装上去之后叫什么、以及平台侧读到的 metadata 是否正确。
-  # v0.5.3 的包是人工在本地打的，根目录写死了旧名字，
-  # 于是 metadata.yaml 里的 name 与目录名分叉，审核侧拿到的插件身份也是旧的。
-  # （旧名字见 CHANGELOG 的 v0.5.4 条目；仓库其它地方一律不许再出现它。）
+  # v0.5.3 的包是人工在本地打的，根目录写死了旧名字，于是 metadata.yaml 里的
+  # name 与包内目录名分叉 —— 装上去目录叫一个名字、身份登记是另一个名字。
   # 现在由流水线从仓库内容现包：包名、包内根目录都跟着 metadata.yaml 的 name 走。
   #
-  # 注意：CNB 的 script 每次都是新 shell，Stage 之间靠 $CNB_ENV_FILE 传值。
+  # 为什么挂 tag_push 而不是 Release 页面：CNB 的触发事件里**没有 release 事件**
+  # （只有 tag_push / auto_tag / tag_deploy.*），写在 $ 下的 release: 是死配置，
+  # 我一开始就写错过，白等了一轮。tag 一推就出包，正好。
+  #
+  # 注意：CNB 的 script 每次都是新 shell。跨 Stage 传值只有一条路：脚本输出
+  # `##[set-output key=value]` + Stage 的 exports 映射成环境变量（见下）。
   # 插值一律用 python 读文件算，不在 shell 里拼 ${{...}}（$ 在 .cnb.yml 里
   # 是脚本插值，套在命令里容易被吃掉一层）。
-  release:
-    - stages:
-        - name: metadata 自检并准备包名
+$:
+  tag_push:
+    - <<: *docker-config
+      stages:
+        - name: 确认标签与 metadata 版本一致
           script: |
-            python3 -m pip install -r requirements.txt
-            python3 tests/test_metadata.py --require-pillow
-            python3 - > /tmp/pkg.env <<'EOF'
-            import pathlib, re
+            python3 - <<'PY'
+            # 打 tag 最容易出的事是「tag 名和 metadata.yaml 的 version 对不上」，
+            # 那样包会挂在一个错误的版本号下。这里先卡一道。
+            import os, pathlib, re
+            ref = os.environ.get("CNB_BRANCH") or ""
             text = pathlib.Path("metadata.yaml").read_text(encoding="utf-8")
-            name = re.search(r"^name:\s*(\S+)", text, re.M).group(1)
             ver = re.search(r"^version:\s*(\S+)", text, re.M).group(1)
-            print(f"PLUGIN_NAME={name}")
-            print(f"PLUGIN_VERSION={ver}")
-            print(f"ZIP_NAME={name}-v{ver}.zip")
-            EOF
-            cat /tmp/pkg.env >> "$CNB_ENV_FILE"
+            name = re.search(r"^name:\s*(\S+)", text, re.M).group(1)
+            assert ref == f"v{ver}", f"标签 {ref} 与 metadata.yaml 的版本 {ver} 不一致"
+            print(f"[OK] 标签 {ref} 对应 {name} {ver}")
+            PY
         - name: 打包安装包
           script: |
             python3 - <<'PY'
-            # 打包 + 校验放在一个 python 进程里做：包内根目录名与 metadata.name
-            # 必须在同一个阶段就核对掉，分给 shell 反而更容易写歪。
-            import os, pathlib, re, shutil, zipfile
+            import pathlib, re, shutil, zipfile
 
             root = pathlib.Path(".").resolve()
             text = (root / "metadata.yaml").read_text(encoding="utf-8")
@@ -101,15 +103,12 @@ $:
                 shutil.rmtree(stage.parent)
             stage.mkdir(parents=True)
 
-            # 只装插件本体：版本控制、CI 配置、缓存、开发文档不进包
+            # 只装插件本体：版本控制、CI 配置、缓存不进包
             skip_dirs = {".git", ".cnb", "__pycache__", ".venv", "node_modules"}
             skip_files = {".gitignore", ".cnb.yml"}
-            count = 0
             for path in root.rglob("*"):
                 rel = path.relative_to(root)
                 if any(part in skip_dirs for part in rel.parts):
-                    continue
-                if rel.parts[0] in ("tests", "docs") and rel.name in skip_files:
                     continue
                 if path.is_dir():
                     continue
@@ -118,7 +117,6 @@ $:
                 target = stage / rel
                 target.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(path, target)
-                count += 1
 
             out = pathlib.Path("/tmp") / zip_name
             with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -137,16 +135,60 @@ $:
             print(f"[OK] {zip_name}：{len(names)} 个文件，根目录 {name}")
             print(f"[OK] 大小 {out.stat().st_size} 字节")
             PY
-            # 把包名传给下一个 Stage（脚本内 python 算出来的，不能靠 shell 变量跨 Stage）
-            python3 - > /tmp/pkg.env <<'EOF'
+            # 包名要传给后面的 Stage。CNB 的跨 Stage 传值只有一条路：
+            # 脚本输出 `##[set-output key=value]`，再由 exports 映射成环境变量。
+            # （不要试图往某个 CNB_ 前缀的文件变量里写 —— 那类变量不存在，
+            #   语义校验会直接拦下。）
+            python3 - <<'PY'
             import pathlib, re
             text = pathlib.Path("metadata.yaml").read_text(encoding="utf-8")
             name = re.search(r"^name:\s*(\S+)", text, re.M).group(1)
             ver = re.search(r"^version:\s*(\S+)", text, re.M).group(1)
-            print(f"ZIP_NAME={name}-v{ver}.zip")
-            EOF
-            cat /tmp/pkg.env >> "$CNB_ENV_FILE"
-        - name: 上传为 Release 附件
+            print(f"##[set-output zip_name={name}-v{ver}.zip]")
+            PY
+          exports:
+            zip_name: ZIP_NAME
+        - name: 创建 / 更新 Release
+          script: |
+            python3 - <<'PY'
+            # 先建/更新 Release（带上正文），后面才有 release-id 可以挂附件。
+            # 重复推送同一个 tag 时这里要能幂等：已存在就更新，不报错。
+            import json, os, pathlib, subprocess
+
+            repo = os.environ["CNB_REPO_SLUG"]
+            tag = os.environ["CNB_BRANCH"]
+            body = pathlib.Path("CHANGELOG.md").read_text(encoding="utf-8")
+            # Release 正文取 CHANGELOG 里当前版本那一节，避免正文和代码脱节
+            lines = body.splitlines()
+            start = next((i for i, l in enumerate(lines)
+                          if l.startswith("## ") and tag.lstrip("v") in l), 0)
+            section, depth = [], 0
+            for line in lines[start:]:
+                if line.startswith("## "):
+                    depth += 1
+                    if depth > 1:
+                        break
+                section.append(line)
+            notes = "\n".join(section).strip()
+
+            existing = subprocess.run(
+                ["cnb", "releases", "get-release-by-tag", "--repo", repo,
+                 "--tag", tag, "--verbose"],
+                capture_output=True, text=True)
+            try:
+                release_id = json.loads(existing.stdout)["data"]["id"]
+                subprocess.run(["cnb", "releases", "patch-release", "--repo", repo,
+                                "--release-id", release_id, "--body", notes,
+                                "--make-latest", "true"], check=True)
+                print(f"[OK] 更新已有 Release {tag}")
+            except Exception:
+                subprocess.run(["cnb", "releases", "post-release", "--repo", repo,
+                                "--tag-name", tag, "--name", tag,
+                                "--body", notes, "--make-latest", "true"],
+                               check=True)
+                print(f"[OK] 创建 Release {tag}")
+            PY
+        - name: 上传安装包为 Release 附件
           script: |
             python3 - <<'PY'
             import json, os, pathlib, subprocess, urllib.request
@@ -156,7 +198,13 @@ $:
             assert path.is_file(), f"没找到 {path}"
 
             repo = os.environ["CNB_REPO_SLUG"]
-            release_id = os.environ["CNB_RELEASE_ID"]
+            tag = os.environ["CNB_BRANCH"]
+            raw = subprocess.run(
+                ["cnb", "releases", "get-release-by-tag", "--repo", repo,
+                 "--tag", tag, "--verbose"],
+                capture_output=True, text=True, check=True).stdout
+            release_id = json.loads(raw)["data"]["id"]
+
             raw = subprocess.run(
                 ["cnb", "releases", "post-release-asset-upload-url",
                  "--repo", repo, "--release-id", release_id,
@@ -168,37 +216,7 @@ $:
             req = urllib.request.Request(
                 upload_url, data=path.read_bytes(), method="PUT",
                 headers={"Content-Type": "application/zip"})
-            with urllib.request.urlopen(req, timeout=180) as resp:
+            with urllib.request.urlopen(req, timeout=300) as resp:
                 print(f"[OK] 附件已上传：{zip_name}（HTTP {resp.status}）")
-            PY
-
-  # 注意：这里**不能**再放 cnbcool/git-auto-tag 那一步。
-  #
-  # 它原本是为了「push 到 main 时按提交信息自动打 tag」，但它的配置写的是
-  # `tagFormat: v${version}` —— `.cnb.yml` 里 ${...} 会被当成 CNB 环境变量插值，
-  # 而 `version` 不是环境变量，于是被替换成空串，传给 semantic-release 的
-  # 实际值是字面量 `v`。semantic-release 直接报：
-  #
-  #     [ERROR] ETAGNOVERSION Invalid `tagFormat` option.
-  #     [ERROR] Your configuration for the tagFormat option is v.
-  #     [ERROR] ... must contain the variable version exactly once.
-  #
-  # 更要命的是它 exit 1，会把整条 tag_push 流水线判成 error，**后面所有 Stage 全被跳过** ——
-  # release 的打包与上传一次都没跑到。tag 是我们手工按版本号纪律建的（见
-  # docs/DEVELOPMENT.md 9.1），本来就不该让机器人自动产生，所以直接删掉这一段。
-  tag_push:
-    - <<: *docker-config
-      stages:
-        - name: 确认标签与 metadata 版本一致
-          script: |
-            python3 - <<'PY'
-            # 打 tag 最容易出的事是「tag 名和 metadata.yaml 的 version 对不上」，
-            # 那样 Release 里的包会挂在一个错误的版本号下。这里先卡一道。
-            import os, pathlib, re
-            ref = os.environ.get("CNB_BRANCH") or ""
-            text = pathlib.Path("metadata.yaml").read_text(encoding="utf-8")
-            ver = re.search(r"^version:\s*(\S+)", text, re.M).group(1)
-            name = re.search(r"^name:\s*(\S+)", text, re.M).group(1)
-            assert ref == f"v{ver}", f"标签 {ref} 与 metadata.yaml 的版本 {ver} 不一致"
-            print(f"[OK] 标签 {ref} 对应 {name} {ver}")
+            print(f"下载地址：https://cnb.cool/{repo}/-/releases/download/{tag}/{zip_name}")
             PY
