@@ -187,7 +187,8 @@ $:
   # release 的打包与上传一次都没跑到。tag 是我们手工按版本号纪律建的（见
   # docs/DEVELOPMENT.md 9.1），本来就不该让机器人自动产生，所以直接删掉这一段。
   tag_push:
-    - stages:
+    - <<: *docker-config
+      stages:
         - name: 确认标签与 metadata 版本一致
           script: |
             python3 - <<'PY'
