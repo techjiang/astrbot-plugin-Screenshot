@@ -255,10 +255,13 @@ $:
                     "Accept": "application/json"}
 
             # 先要一个上传地址，再 PUT 文件本体
-            payload = json.dumps({"name": zip_name, "size": path.stat().st_size,
+            # 路径是 asset-upload-url（连字符，不是 /assets/upload-url），
+            # 参数名是 asset_name（不是 name）—— 这两处都实测撞过 404 / 400。
+            payload = json.dumps({"asset_name": zip_name,
+                                  "size": path.stat().st_size,
                                   "overwrite": True}).encode()
             req = urllib.request.Request(
-                f"{api}/{repo}/-/releases/{release_id}/assets/upload-url",
+                f"{api}/{repo}/-/releases/{release_id}/asset-upload-url",
                 data=payload, method="POST", headers=auth)
             try:
                 with urllib.request.urlopen(req, timeout=60) as resp:
