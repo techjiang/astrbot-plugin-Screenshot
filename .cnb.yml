@@ -152,66 +152,84 @@ $:
           script: |
             python3 - <<'PY'
             # 先建/更新 Release（带上正文），后面才有 release-id 可以挂附件。
-            # 重复推送同一个 tag 时这里要能幂等：已存在就更新，不报错。
-            import json, os, pathlib, subprocess
+            # 重复推送同一个 tag 要幂等：已存在就更新，不报错。
+            #
+            # 这里直接用 HTTP 打 API，不走 `cnb` CLI —— 构建镜像里没有这个可执行文件
+            # （实测 `FileNotFoundError: 'cnb'`）。CNB 提供现成的两个变量：
+            # CNB_API_ENDPOINT（API 地址）与 CNB_TOKEN（构建凭证，tag_push 有写权限）。
+            import json, os, pathlib, urllib.error, urllib.request
 
+            api = os.environ["CNB_API_ENDPOINT"].rstrip("/")
+            token = os.environ["CNB_TOKEN"]
             repo = os.environ["CNB_REPO_SLUG"]
             tag = os.environ["CNB_BRANCH"]
-            body = pathlib.Path("CHANGELOG.md").read_text(encoding="utf-8")
-            # Release 正文取 CHANGELOG 里当前版本那一节，避免正文和代码脱节
-            lines = body.splitlines()
+            base = f"{api}/{repo}/-/releases"
+            auth = {"Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json"}
+
+            def call(method, url, payload=None):
+                data = json.dumps(payload).encode() if payload is not None else None
+                req = urllib.request.Request(url, data=data, method=method, headers=auth)
+                with urllib.request.urlopen(req, timeout=60) as resp:
+                    body = resp.read()
+                return json.loads(body) if body else {}
+
+            # Release 正文取 CHANGELOG 里当前版本那一节，避免正文与仓库里的变更记录
+            # 各写一份然后慢慢脱节。
+            lines = pathlib.Path("CHANGELOG.md").read_text(encoding="utf-8").splitlines()
             start = next((i for i, l in enumerate(lines)
                           if l.startswith("## ") and tag.lstrip("v") in l), 0)
-            section, depth = [], 0
+            section, headings = [], 0
             for line in lines[start:]:
                 if line.startswith("## "):
-                    depth += 1
-                    if depth > 1:
+                    headings += 1
+                    if headings > 1:
                         break
                 section.append(line)
-            notes = "\n".join(section).strip()
+            notes = "\n".join(section).strip() or f"{tag}"
 
-            existing = subprocess.run(
-                ["cnb", "releases", "get-release-by-tag", "--repo", repo,
-                 "--tag", tag, "--verbose"],
-                capture_output=True, text=True)
             try:
-                release_id = json.loads(existing.stdout)["data"]["id"]
-                subprocess.run(["cnb", "releases", "patch-release", "--repo", repo,
-                                "--release-id", release_id, "--body", notes,
-                                "--make-latest", "true"], check=True)
+                info = call("GET", f"{base}/tags/{tag}")
+                release_id = info["data"]["id"]
+                call("PATCH", f"{base}/{release_id}",
+                     {"body": notes, "make_latest": "true"})
                 print(f"[OK] 更新已有 Release {tag}")
-            except Exception:
-                subprocess.run(["cnb", "releases", "post-release", "--repo", repo,
-                                "--tag-name", tag, "--name", tag,
-                                "--body", notes, "--make-latest", "true"],
-                               check=True)
+            except urllib.error.HTTPError:
+                info = call("POST", base, {"tag_name": tag, "name": tag,
+                                          "body": notes, "make_latest": "true"})
+                release_id = info["data"]["id"]
                 print(f"[OK] 创建 Release {tag}")
+
+            # 把 release_id 交给下一个 Stage
+            print(f"##[set-output release_id={release_id}]")
             PY
+          exports:
+            release_id: RELEASE_ID
         - name: 上传安装包为 Release 附件
           script: |
             python3 - <<'PY'
-            import json, os, pathlib, subprocess, urllib.request
+            import json, os, pathlib, urllib.request
 
             zip_name = os.environ["ZIP_NAME"]
             path = pathlib.Path("/tmp") / zip_name
             assert path.is_file(), f"没找到 {path}"
 
+            api = os.environ["CNB_API_ENDPOINT"].rstrip("/")
+            token = os.environ["CNB_TOKEN"]
             repo = os.environ["CNB_REPO_SLUG"]
             tag = os.environ["CNB_BRANCH"]
-            raw = subprocess.run(
-                ["cnb", "releases", "get-release-by-tag", "--repo", repo,
-                 "--tag", tag, "--verbose"],
-                capture_output=True, text=True, check=True).stdout
-            release_id = json.loads(raw)["data"]["id"]
+            release_id = os.environ["RELEASE_ID"]
+            auth = {"Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json"}
 
-            raw = subprocess.run(
-                ["cnb", "releases", "post-release-asset-upload-url",
-                 "--repo", repo, "--release-id", release_id,
-                 "--asset-name", zip_name, "--size", str(path.stat().st_size),
-                 "--overwrite", "--verbose"],
-                capture_output=True, text=True, check=True).stdout
-            upload_url = json.loads(raw)["data"]["upload_url"]
+            # 先要一个上传地址，再 PUT 文件本体
+            payload = json.dumps({"name": zip_name, "size": path.stat().st_size,
+                                  "overwrite": True}).encode()
+            req = urllib.request.Request(
+                f"{api}/{repo}/-/releases/{release_id}/assets/upload-url",
+                data=payload, method="POST", headers=auth)
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                upload_url = json.loads(resp.read())["data"]["upload_url"]
 
             req = urllib.request.Request(
                 upload_url, data=path.read_bytes(), method="PUT",
