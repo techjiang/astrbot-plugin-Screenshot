@@ -273,12 +273,42 @@ $:
             body = payload_out.get("data") if isinstance(payload_out.get("data"), dict) \
                 else payload_out
             upload_url = body.get("upload_url") or body.get("url")
+            verify_url = body.get("verify_url")
             assert upload_url, f"响应里没有上传地址：{payload_out!r}"
+            assert verify_url, f"响应里没有 verify_url：{payload_out!r}"
 
             req = urllib.request.Request(
                 upload_url, data=path.read_bytes(), method="PUT",
                 headers={"Content-Type": "application/zip"})
             with urllib.request.urlopen(req, timeout=300) as resp:
-                print(f"[OK] 附件已上传：{zip_name}（HTTP {resp.status}）")
+                print(f"[OK] 文件本体已 PUT（HTTP {resp.status}）")
+
+            # PUT 成功 ≠ 附件生效。这一步是**必须**的：拿 upload_url 传完文件后，
+            # 还要回 verify_url 确认，平台才会把它登记成 Release 附件。
+            # 漏掉它的表现是接口全绿、Release 也建好了，但附件列表是空的，
+            # 下载地址 404 "release asset ... not found" —— 我就是这么踩的。
+            # verify_url 里已经带上了 upload_token 与 asset_path，直接 POST 即可。
+            conf = urllib.request.Request(
+                verify_url, data=b"", method="POST",
+                headers={"Authorization": f"Bearer {token}",
+                         "Accept": "application/json"})
+            try:
+                with urllib.request.urlopen(conf, timeout=120) as resp:
+                    print(f"[OK] 附件已确认登记（HTTP {resp.status}）")
+            except urllib.error.HTTPError as exc:
+                raise AssertionError(
+                    f"确认附件失败 HTTP {exc.code}: {exc.read()[:500]!r}") from exc
+
+            # 最后自校验：附件必须真的能查到，不能只看前面几步的退出码
+            check = urllib.request.Request(
+                f"{api}/{repo}/-/releases/tags/{tag}",
+                headers={"Authorization": f"Bearer {token}",
+                         "Accept": "application/json"})
+            with urllib.request.urlopen(check, timeout=60) as resp:
+                info = json.loads(resp.read())
+            payload = info.get("data") if isinstance(info.get("data"), dict) else info
+            names = [a.get("name") for a in (payload.get("assets") or [])]
+            assert zip_name in names, f"附件没登记上，当前附件列表：{names}"
+            print(f"[OK] 附件已在 Release 上：{names}")
             print(f"下载地址：https://cnb.cool/{repo}/-/releases/download/{tag}/{zip_name}")
             PY
