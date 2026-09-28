@@ -186,7 +186,7 @@ class ScreenshotPlugin(Star):
         )
 
     def _cache_dir(self) -> Path:
-        out_dir = Path(StarTools.get_data_dir("astrbot_plugin_screenshot")) / "cache"
+        out_dir = Path(StarTools.get_data_dir("astrbot_plugin_web_screenshot")) / "cache"
         out_dir.mkdir(parents=True, exist_ok=True)
         return out_dir
 

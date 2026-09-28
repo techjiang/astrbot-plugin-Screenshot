@@ -3,6 +3,53 @@
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)。
 
+## [v0.5.4] — 2026-09-28
+
+> **上架被拦在「插件已被标记为 deleted」这一关**，本轮修的正是它。
+> 关键词不是代码，是身份。
+
+### 修复
+
+- **插件改名 `astrbot_plugin_screenshot` → `astrbot_plugin_web_screenshot`**：
+  AstrBot Cloud 的插件身份是 `author/name`（`metadata.yaml` 的 `author` + `name`），
+  全局唯一；升级版本号不会换身份，改名才会。
+  在 AstrBot Cloud 上实测，老的 `astrbot_plugin_screenshot` 这个名字
+  已经「查不到、但占着号」：以它为 `name` 提交只会在登记阶段撞上
+  「已标记 deleted、已从公开市场下架」的死身份证，升级版本号、修
+  `logging`、修 Logo 都救不回来 —— 前几次上架失败正是卡在这里。
+  新名字同时把「插件」与「截图别人的屏幕」区分开：本插件截的是**网页**，不是桌面。
+
+  **改了什么**
+  - `metadata.yaml`：`name` 与本地数据目录标识
+  - 插件本地数据目录：`astrbot_plugin_screenshot` → `astrbot_plugin_web_screenshot`
+  - `main.py`、`tests/`、`README.md`、`docs/` 内所有身份与路径引用
+
+  **没改什么**（避免误伤）
+  - 展示名仍是 `Screenshot`，指令仍是 `/截图`
+  - GitHub 仓库名仍是 `astrbot-plugin-Screenshot`（`repo` 不参与插件身份）
+
+- **版本号顺延到 `0.5.4`**：`0.5.3` 已发布过（CNB 与 GitHub 两处都有 Release），
+  按版本号纪律不得复用；改名属于身份变更，理应给一个新版本，而不是偷偷改掉旧版本。
+
+### 新增
+
+- **`canary` 发布流水线**（`.cnb.yml` 的 `release` 事件段）：在 CNB 上打 Release 时
+  自动做三件事 —— 校验 `metadata.yaml`（`tests/test_metadata.py --require-pillow`）、
+  把仓库根打成 `astrbot_plugin_web_screenshot-<version>.zip`、作为 Release 附件上传。
+  以前这一步是人工在本地打包，容易和仓库状态脱节；现在产物直接由仓库内容生成，
+  审核侧拿到的 zip 与 tag 指向的代码一致。
+  Release 附件下载地址即插件市场的 `download_url`。
+
+### 守护
+
+- `tests/test_metadata.py` 增加两条身份断言：
+  - `name` 必须是 `astrbot_plugin_web_screenshot`（防止有人「整理命名」改回去，
+    一改就又撞回那只死身份证）
+  - `name` 必须以 `astrbot_plugin_` 开头 —— 插件市场 JSON 规范要求 `author` / `name`
+    非空、且不含 `/`，平台侧也是按这个前缀识别插件包的
+- `tests/test_docs.py` 增加一条断链断言：仓库内不得再出现旧标识
+  `astrbot_plugin_screenshot`，避免文档把人教回旧名字
+
 ## [v0.5.3] — 2026-09-27
 
 > **为什么不是 v0.5.2**：`0.5.2` 这个版本号在本轮开发中已被使用过
