@@ -188,7 +188,7 @@
 | 缓存文件超过 120 个 | 按修改时间清理旧的；本次刚写出的产物受保护 |
 | 产物是 PDF | 以「已生成文件：xxx.pdf」形式回复文件名，不作为图片发送 |
 
-产物落在 `data/plugin_data/astrbot_plugin_web_screenshot/cache`，文件名形如
+产物落在 `data/plugin_data/astrbot_plugin_webpage_screenshot/cache`，文件名形如
 `<会话>_<时间戳>_<序号>.<扩展名>`，同会话连续截图不会互相覆盖。
 
 ## 6. 报错对照表

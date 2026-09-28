@@ -89,7 +89,7 @@ for field in REQUIRED:
 
 # 目录名：本地开发时根目录可能是 workspace/仓库名，不强制等于 name；
 # 但若根目录本身形如 astrbot_plugin_xxx，则必须与 name 一致。
-EXPECTED_NAME = "astrbot_plugin_web_screenshot"
+EXPECTED_NAME = "astrbot_plugin_webpage_screenshot"
 check("name 等于约定的插件目录名", meta.get("name"), EXPECTED_NAME)
 if ROOT.name.startswith("astrbot_plugin_"):
     check("name 与所在目录名一致", meta.get("name"), ROOT.name)
@@ -107,7 +107,7 @@ ok("name 符合插件命名规范（小写+下划线）",
 ok("name 不是已被平台标记 deleted 的旧身份 astrbot_plugin_screenshot",
    meta.get("name") != "astrbot_plugin_screenshot",
    "该身份在 AstrBot Cloud 上已下架且被标记 deleted，复用会直接挡在上架登记这一步；"
-   "要用新名字（当前 astrbot_plugin_web_screenshot）")
+   "要用新名字（当前 astrbot_plugin_webpage_screenshot）")
 
 # 插件市场 JSON 规范要求 author / name 非空、去除首尾空白、且不得包含 `/`，
 # 平台侧也是靠 `astrbot_plugin_` 前缀把记录认成插件包的。
@@ -306,7 +306,7 @@ if logo_path.is_file():
 #
 # 已经用真 AstrBot 4.14.6 的 PluginManager 实测过：
 #   加根目录 logo.png 之前 -> logo_path = None
-#   加根目录 logo.png 之后 -> logo_path = .../astrbot_plugin_web_screenshot/logo.png
+#   加根目录 logo.png 之后 -> logo_path = .../astrbot_plugin_webpage_screenshot/logo.png
 #
 # 所以这里必须硬性要求根目录存在 `logo.png`，且与 `assets/logo.png` 同源同内容，
 # 避免以后有人「整理目录」把它挪回 assets/ 里，Logo 又静默消失。

@@ -1,4 +1,4 @@
-name: astrbot_plugin_web_screenshot
+name: astrbot_plugin_webpage_screenshot
 display_name: Screenshot
 short_desc: CDP 直驱的网页截图：整页长图、元素截图、HTML 渲染、透明背景与 PDF
 desc: |

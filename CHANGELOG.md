@@ -10,18 +10,26 @@
 
 ### 修复
 
-- **插件改名 `astrbot_plugin_screenshot` → `astrbot_plugin_web_screenshot`**：
+- **插件改名 `astrbot_plugin_screenshot` → `astrbot_plugin_webpage_screenshot`**：
   AstrBot Cloud 的插件身份是 `author/name`（`metadata.yaml` 的 `author` + `name`），
   全局唯一；升级版本号不会换身份，改名才会。
   在 AstrBot Cloud 上实测，老的 `astrbot_plugin_screenshot` 这个名字
   已经「查不到、但占着号」：以它为 `name` 提交只会在登记阶段撞上
   「已标记 deleted、已从公开市场下架」的死身份证，升级版本号、修
   `logging`、修 Logo 都救不回来 —— 前几次上架失败正是卡在这里。
-  新名字同时把「插件」与「截图别人的屏幕」区分开：本插件截的是**网页**，不是桌面。
+
+  **为什么最后叫 `astrbot_plugin_webpage_screenshot`（而不是更短的 `..._web_screenshot`）**：
+  平台上的 `name` 是**全局唯一**的，不按作者区分。第一版改名想用
+  `astrbot_plugin_web_screenshot`，查平台时发现它已经被
+  `浅月tniay/astrbot_plugin_web_screenshot`（Display: API网页截图）占了 ——
+  撞名会再次卡在登记阶段，等于白改。最终选了 `astrbot_plugin_webpage_screenshot`：
+  与已被占用的那个明显不同，且把「插件」与「截图别人的屏幕」区分开，
+  本插件截的是**网页**，不是桌面。
+  选名方法记在 `docs/DEVELOPMENT.md` 9.2，下次改名照着做。
 
   **改了什么**
   - `metadata.yaml`：`name` 与本地数据目录标识
-  - 插件本地数据目录：`astrbot_plugin_screenshot` → `astrbot_plugin_web_screenshot`
+  - 插件本地数据目录：`astrbot_plugin_screenshot` → `astrbot_plugin_webpage_screenshot`
   - `main.py`、`tests/`、`README.md`、`docs/` 内所有身份与路径引用
 
   **没改什么**（避免误伤）
@@ -33,9 +41,9 @@
 
 ### 新增
 
-- **`canary` 发布流水线**（`.cnb.yml` 的 `release` 事件段）：在 CNB 上打 Release 时
+- **发布流水线**（`.cnb.yml` 的 `release` 事件段）：在 CNB 上打 Release 时
   自动做三件事 —— 校验 `metadata.yaml`（`tests/test_metadata.py --require-pillow`）、
-  把仓库根打成 `astrbot_plugin_web_screenshot-<version>.zip`、作为 Release 附件上传。
+  把仓库根打成 `<name>-v<version>.zip`、作为 Release 附件上传。
   以前这一步是人工在本地打包，容易和仓库状态脱节；现在产物直接由仓库内容生成，
   审核侧拿到的 zip 与 tag 指向的代码一致。
   Release 附件下载地址即插件市场的 `download_url`。
@@ -43,7 +51,7 @@
 ### 守护
 
 - `tests/test_metadata.py` 增加两条身份断言：
-  - `name` 必须是 `astrbot_plugin_web_screenshot`（防止有人「整理命名」改回去，
+  - `name` 必须是 `astrbot_plugin_webpage_screenshot`（防止有人「整理命名」改回去，
     一改就又撞回那只死身份证）
   - `name` 必须以 `astrbot_plugin_` 开头 —— 插件市场 JSON 规范要求 `author` / `name`
     非空、且不含 `/`，平台侧也是按这个前缀识别插件包的

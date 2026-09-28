@@ -112,7 +112,7 @@ def main() -> int:
           "`astrbot.screenshot`" not in docs_all,
           "文档里出现 `astrbot.screenshot`，那是内置 logging 时代的写法")
 
-    # 插件身份在 v0.5.4 从 astrbot_plugin_screenshot 改成 astrbot_plugin_web_screenshot。
+    # 插件身份在 v0.5.4 换过一次（旧名字见 CHANGELOG）。
     # 旧名字在 AstrBot Cloud 上已被标记 deleted 并下架，是个「查不到但占着号」的死身份，
     # 复用会被直接挡在上架登记那一步。文档里留着它，等于把下一个改代码的人教回去。
     # 允许出现的例外只有 CHANGELOG —— 变更日志本来就要记录「改名前叫什么」。
@@ -124,8 +124,8 @@ def main() -> int:
         src = path.read_text(encoding="utf-8")
         check(f"{rel} 不再使用旧插件身份 astrbot_plugin_screenshot",
               "astrbot_plugin_screenshot" not in src,
-              "旧身份已被平台标记 deleted，复用会挡在上架登记；新身份是 "
-              "astrbot_plugin_web_screenshot（改名过程记在 CHANGELOG 里）")
+              "旧身份已被平台标记 deleted，复用会挡在上架登记；"
+              "新身份见 metadata.yaml 的 name（改名经过记在 CHANGELOG 里）")
 
     if FAILURES:
         print(f"\n=== 文档检查：{len(FAILURES)} 项不一致 ===")
