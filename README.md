@@ -110,7 +110,7 @@ CDP 是浏览器自带的调试协议，只要进程带着 `--remote-debugging-p
 在 AstrBot 插件市场搜索 `Screenshot` 安装，或把仓库放进插件目录：
 
 ```
-astrbot/data/plugins/astrbot_plugin_web_screenshot/
+astrbot/data/plugins/astrbot_plugin_webpage_screenshot/
 ```
 
 插件需要一个系统里的 Chromium / Chrome。Debian / Ubuntu：
@@ -219,7 +219,7 @@ apt-get update && apt-get install -y chromium fonts-noto-cjk fonts-noto-color-em
 
 ## 配置
 
-在 AstrBot 插件配置面板里改，或直接改 `data/config/astrbot_plugin_web_screenshot_config.json`。
+在 AstrBot 插件配置面板里改，或直接改 `data/config/astrbot_plugin_webpage_screenshot_config.json`。
 
 | 键 | 类型 | 说明 | 默认 |
 | --- | --- | --- | --- |
@@ -262,7 +262,7 @@ apt-get update && apt-get install -y chromium fonts-noto-cjk fonts-noto-color-em
   每条都把视口底对齐到该条底部，所以 `position:fixed` 的浮层只出现在图底。
 - **浏览器进程常驻**：插件加载时启动一次 Chromium，每次截图新开一个标签页、用完即关，
   插件卸载时统一回收。进程假死或崩溃会自动重启并重试。
-- **缓存自动清理**：产物写在 `data/plugin_data/astrbot_plugin_web_screenshot/cache`，
+- **缓存自动清理**：产物写在 `data/plugin_data/astrbot_plugin_webpage_screenshot/cache`，
   最多保留 120 个文件，本次刚写出的产物受保护不会被误删。
 - **首次使用有冷启动**：约 1–2 秒，之后单次截图通常在 1 秒内。
 - **出图像素 = 你指定的视口像素**：`/截图 example.com viewport 1280x800` 出图就是
@@ -298,8 +298,8 @@ python3 tests/test_docs.py
 # 端到端实测：真 PluginManager 加载插件 → 真 Chromium 出图（40 条用例）
 export ASTRBOT_ROOT=/tmp/ab
 mkdir -p $ASTRBOT_ROOT/data/plugins $ASTRBOT_ROOT/data/config
-ln -sfn "$PWD" $ASTRBOT_ROOT/data/plugins/astrbot_plugin_web_screenshot
-printf '{}' > $ASTRBOT_ROOT/data/config/astrbot_plugin_web_screenshot_config.json
+ln -sfn "$PWD" $ASTRBOT_ROOT/data/plugins/astrbot_plugin_webpage_screenshot
+printf '{}' > $ASTRBOT_ROOT/data/config/astrbot_plugin_webpage_screenshot_config.json
 SHOT_BROWSER=$(which chromium) python3 tests/e2e_astrbot.py
 ```
 

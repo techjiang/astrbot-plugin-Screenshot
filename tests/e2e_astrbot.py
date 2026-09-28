@@ -416,7 +416,7 @@ async def main() -> int:
     pm = PluginManager(ctx, cfg)
     await pm.reload()
 
-    info = pm.context.get_registered_star("astrbot_plugin_web_screenshot")
+    info = pm.context.get_registered_star("astrbot_plugin_webpage_screenshot")
     if info is None or info.star_cls is None:
         print("插件未能通过 AstrBot 加载")
         return 2

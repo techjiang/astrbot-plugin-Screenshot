@@ -303,8 +303,8 @@ python3 tests/test_parse.py
 # 依赖：chromium（或 Chrome）、中文字体、pip install astrbot
 export ASTRBOT_ROOT=/tmp/ab
 mkdir -p $ASTRBOT_ROOT/data/plugins $ASTRBOT_ROOT/data/config
-ln -sfn "$PWD" $ASTRBOT_ROOT/data/plugins/astrbot_plugin_web_screenshot
-printf '{}' > $ASTRBOT_ROOT/data/config/astrbot_plugin_web_screenshot_config.json
+ln -sfn "$PWD" $ASTRBOT_ROOT/data/plugins/astrbot_plugin_webpage_screenshot
+printf '{}' > $ASTRBOT_ROOT/data/config/astrbot_plugin_webpage_screenshot_config.json
 SHOT_BROWSER=$(which chromium) python3 tests/e2e_astrbot.py
 ```
 
@@ -312,7 +312,7 @@ SHOT_BROWSER=$(which chromium) python3 tests/e2e_astrbot.py
 
 - `PluginManager` 只从 `$ASTRBOT_ROOT/data/plugins` 扫插件，仓库不在那里就扫不到；
   用上面的软链接最省事
-- 缺 `data/config/astrbot_plugin_web_screenshot_config.json` 时插件会因读配置失败而加载不了，
+- 缺 `data/config/astrbot_plugin_webpage_screenshot_config.json` 时插件会因读配置失败而加载不了，
   空对象 `{}` 即可
 
 跑法说明：
@@ -463,17 +463,35 @@ AstrBot Cloud 的插件身份是 `author/name`，全局唯一、按身份记账�
   跟内容质量无关 —— 修代码、修 Logo、升版本号都没用
 
 本项目真实踩过：旧名字（见 CHANGELOG v0.5.4）在平台上已是 `deleted` 状态，
-连续几次上架都被它拦下，直到换成 `astrbot_plugin_web_screenshot` 才拿到可用身份。
+连续几次上架都被它拦下，换名字才拿到可用身份。**但换名字本身也有坑 —— 名字是全局唯一的。**
+
+`name` 在平台上**全局唯一，不按作者区分**。第一版改名挑了
+`astrbot_plugin_web_screenshot`，提交前查平台才发现已经被
+`浅月tniay/astrbot_plugin_web_screenshot` 占了：这种撞名会**再次**卡在登记阶段，
+等于白改一场。最终落在 `astrbot_plugin_webpage_screenshot`。
+
+**改名前必须先查平台，别靠直觉挑名字**：
+
+```bash
+# 精确查候选名有没有被占：search 会连带模糊命中，看 name 字段是否完全相等才算占用
+curl -s "https://cloud.astrbot.app/api/v1/market/plugins?page=1&page_size=30&search=<候选名>" \
+  | python3 -c "import json,sys; [print(i['plugin_id'], i.get('name')) for i in json.load(sys.stdin)['data']['items']]"
+```
+
+判定口径：只看 `items[].name` 与候选名**完全相等**才算被占。
+`plugin_id` 是 `author/name`，同名不同作者的两条记录会在这里打架，所以搜索命中的
+总数只作参考。这一步需要联网，没法进 CI，属于发布流程里的人工前置检查。
+
 所以：
 
-- 锁死当前身份：`tests/test_metadata.py` 会断言 `name == astrbot_plugin_web_screenshot`，
+- 锁死当前身份：`tests/test_metadata.py` 会断言 `name == astrbot_plugin_webpage_screenshot`，
   并显式断言它**不等于**那个死身份
 - 仓库内除 `CHANGELOG.md` 外，任何文件都不得再出现旧标识
   （`tests/test_docs.py` 负责拦，改名过程只记在 CHANGELOG 里）
 
 **顺带一条容易混的**：`repo`（GitHub 仓库地址）不参与插件身份判定，
 插件市场 JSON 规范写得很直白 ——「`repo` 不得用作插件身份」。
-所以仓库名 `astrbot-plugin-Screenshot` 与插件名 `astrbot_plugin_web_screenshot`
+所以仓库名 `astrbot-plugin-Screenshot` 与插件名 `astrbot_plugin_webpage_screenshot`
 不一致是正常的，别为了「看起来一致」去动仓库名，那会改掉所有安装源。
 
 > 真实踩过一次：上架修复先在 `metadata.yaml` 写了 `0.5.2`（尚未发布、未打 tag），
