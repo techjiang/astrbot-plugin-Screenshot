@@ -172,15 +172,32 @@ $:
                 print(f"[OK] 附件已上传：{zip_name}（HTTP {resp.status}）")
             PY
 
+  # 注意：这里**不能**再放 cnbcool/git-auto-tag 那一步。
+  #
+  # 它原本是为了「push 到 main 时按提交信息自动打 tag」，但它的配置写的是
+  # `tagFormat: v${version}` —— `.cnb.yml` 里 ${...} 会被当成 CNB 环境变量插值，
+  # 而 `version` 不是环境变量，于是被替换成空串，传给 semantic-release 的
+  # 实际值是字面量 `v`。semantic-release 直接报：
+  #
+  #     [ERROR] ETAGNOVERSION Invalid `tagFormat` option.
+  #     [ERROR] Your configuration for the tagFormat option is v.
+  #     [ERROR] ... must contain the variable version exactly once.
+  #
+  # 更要命的是它 exit 1，会把整条 tag_push 流水线判成 error，**后面所有 Stage 全被跳过** ——
+  # release 的打包与上传一次都没跑到。tag 是我们手工按版本号纪律建的（见
+  # docs/DEVELOPMENT.md 9.1），本来就不该让机器人自动产生，所以直接删掉这一段。
   tag_push:
     - stages:
-        - name: 自动打标签
-          image: cnbcool/git-auto-tag:latest
-          settings:
-            tagFormat: v${version}
-            branch: $CNB_BRANCH
-            repoUrlHttps: $CNB_REPO_URL_HTTPS
-          exports:
-            tag: NEW_TAG
-        - name: 展示标签
-          script: echo "$NEW_TAG"
+        - name: 确认标签与 metadata 版本一致
+          script: |
+            python3 - <<'PY'
+            # 打 tag 最容易出的事是「tag 名和 metadata.yaml 的 version 对不上」，
+            # 那样 Release 里的包会挂在一个错误的版本号下。这里先卡一道。
+            import os, pathlib, re
+            ref = os.environ.get("CNB_BRANCH") or ""
+            text = pathlib.Path("metadata.yaml").read_text(encoding="utf-8")
+            ver = re.search(r"^version:\s*(\S+)", text, re.M).group(1)
+            name = re.search(r"^name:\s*(\S+)", text, re.M).group(1)
+            assert ref == f"v{ver}", f"标签 {ref} 与 metadata.yaml 的版本 {ver} 不一致"
+            print(f"[OK] 标签 {ref} 对应 {name} {ver}")
+            PY
