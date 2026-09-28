@@ -170,16 +170,27 @@ $:
                     "Content-Type": "application/json",
                     "Accept": "application/json"}
 
-            def call(method, url, payload=None):
+            def call(method, url, payload=None, missing_ok=False):
+                """missing_ok=True 时，404 返回 None 而不是抛错。
+
+                为什么不直接 except HTTPError 判 404：那样得把真正的失败
+                （401/403/500）也一并吞掉，问题会被伪装成「Release 不存在 → 去创建」，
+                然后创建又失败，报错完全对不上。所以单独给一个显式开关。
+
+                另外错误信息里必须带接口正文：只留状态码的话，404 到底是路径写错、
+                还是 Release 真没有，从日志上根本分不出来（这一轮就是这么卡住的）。
+                """
                 data = json.dumps(payload).encode() if payload is not None else None
                 req = urllib.request.Request(url, data=data, method=method, headers=auth)
                 try:
                     with urllib.request.urlopen(req, timeout=60) as resp:
                         body = resp.read()
                 except urllib.error.HTTPError as exc:
-                    # 把接口返回的正文打出来，否则只剩一个状态码，完全看不出原因
+                    detail = exc.read()[:500]
+                    if missing_ok and exc.code == 404:
+                        return None
                     raise AssertionError(
-                        f"{method} {url} -> HTTP {exc.code}: {exc.read()[:500]!r}") from exc
+                        f"{method} {url} -> HTTP {exc.code}: {detail!r}") from exc
                 return json.loads(body) if body else {}
 
             # Release 正文取 CHANGELOG 里当前版本那一节，避免正文与仓库里的变更记录
@@ -196,17 +207,18 @@ $:
                 section.append(line)
             notes = "\n".join(section).strip() or f"{tag}"
 
-            try:
-                info = call("GET", f"{base}/tags/{tag}")
+            info = call("GET", f"{base}/tags/{tag}", missing_ok=True)
+            if info:
                 release_id = info["data"]["id"]
+                # 用 PATCH 更新正文，幂等：同一个 tag 重复推不会报「已存在」
                 call("PATCH", f"{base}/{release_id}",
                      {"body": notes, "make_latest": "true"})
-                print(f"[OK] 更新已有 Release {tag}")
-            except urllib.error.HTTPError:
+                print(f"[OK] 更新已有 Release {tag}（id={release_id}）")
+            else:
                 info = call("POST", base, {"tag_name": tag, "name": tag,
                                           "body": notes, "make_latest": "true"})
                 release_id = info["data"]["id"]
-                print(f"[OK] 创建 Release {tag}")
+                print(f"[OK] 创建 Release {tag}（id={release_id}）")
 
             # 把 release_id 交给下一个 Stage
             print(f"##[set-output release_id={release_id}]")
