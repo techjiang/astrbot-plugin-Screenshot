@@ -207,9 +207,20 @@ $:
                 section.append(line)
             notes = "\n".join(section).strip() or f"{tag}"
 
+            def release_id_of(info):
+                """取 Release id。
+
+                这个接口**直接返回对象**，没有 CLI 那层的 {"data": ...} 外壳
+                （实测 GET /-/releases/tags/<tag> 顶层就是 id/tag_name/body...）。
+                两种形状都兜一下：将来平台套上外壳也不会突然炸。
+                """
+                payload = info.get("data") if isinstance(info.get("data"), dict) else info
+                assert payload.get("id"), f"响应里没有 release id：{info!r}"
+                return payload["id"]
+
             info = call("GET", f"{base}/tags/{tag}", missing_ok=True)
             if info:
-                release_id = info["data"]["id"]
+                release_id = release_id_of(info)
                 # 用 PATCH 更新正文，幂等：同一个 tag 重复推不会报「已存在」
                 call("PATCH", f"{base}/{release_id}",
                      {"body": notes, "make_latest": "true"})
@@ -217,7 +228,7 @@ $:
             else:
                 info = call("POST", base, {"tag_name": tag, "name": tag,
                                           "body": notes, "make_latest": "true"})
-                release_id = info["data"]["id"]
+                release_id = release_id_of(info)
                 print(f"[OK] 创建 Release {tag}（id={release_id}）")
 
             # 把 release_id 交给下一个 Stage
@@ -251,10 +262,15 @@ $:
                 data=payload, method="POST", headers=auth)
             try:
                 with urllib.request.urlopen(req, timeout=60) as resp:
-                    upload_url = json.loads(resp.read())["data"]["upload_url"]
+                    payload_out = json.loads(resp.read())
             except urllib.error.HTTPError as exc:
                 raise AssertionError(
                     f"取上传地址失败 HTTP {exc.code}: {exc.read()[:500]!r}") from exc
+            # 同上一 Stage：这个接口直接返回对象，没有 {"data": ...} 外壳，两种都兜
+            body = payload_out.get("data") if isinstance(payload_out.get("data"), dict) \
+                else payload_out
+            upload_url = body.get("upload_url") or body.get("url")
+            assert upload_url, f"响应里没有上传地址：{payload_out!r}"
 
             req = urllib.request.Request(
                 upload_url, data=path.read_bytes(), method="PUT",
