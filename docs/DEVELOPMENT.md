@@ -10,7 +10,7 @@
 - [6. 参数解析器](#6-参数解析器)
 - [7. 测试](#7-测试)
 - [8. 调试技巧](#8-调试技巧)
-- [9. 发布流程](#9-发布流程)
+- [9. 发布流程](#9-发布流程)（含发布流水线与身份纪律）
 - [10. 贡献约定](#10-贡献约定)
 
 ---
@@ -303,8 +303,8 @@ python3 tests/test_parse.py
 # 依赖：chromium（或 Chrome）、中文字体、pip install astrbot
 export ASTRBOT_ROOT=/tmp/ab
 mkdir -p $ASTRBOT_ROOT/data/plugins $ASTRBOT_ROOT/data/config
-ln -sfn "$PWD" $ASTRBOT_ROOT/data/plugins/astrbot_plugin_screenshot
-printf '{}' > $ASTRBOT_ROOT/data/config/astrbot_plugin_screenshot_config.json
+ln -sfn "$PWD" $ASTRBOT_ROOT/data/plugins/astrbot_plugin_web_screenshot
+printf '{}' > $ASTRBOT_ROOT/data/config/astrbot_plugin_web_screenshot_config.json
 SHOT_BROWSER=$(which chromium) python3 tests/e2e_astrbot.py
 ```
 
@@ -312,7 +312,7 @@ SHOT_BROWSER=$(which chromium) python3 tests/e2e_astrbot.py
 
 - `PluginManager` 只从 `$ASTRBOT_ROOT/data/plugins` 扫插件，仓库不在那里就扫不到；
   用上面的软链接最省事
-- 缺 `data/config/astrbot_plugin_screenshot_config.json` 时插件会因读配置失败而加载不了，
+- 缺 `data/config/astrbot_plugin_web_screenshot_config.json` 时插件会因读配置失败而加载不了，
   空对象 `{}` 即可
 
 跑法说明：
@@ -397,8 +397,30 @@ SHOT_BROWSER=$(which chromium) python3 tests/e2e_astrbot.py
 4. 新增配置项要同步 `_conf_schema.json`（含 `description` 与 `default`）
 5. 新增指令参数要同步 `main.HELP_TEXT`、`README.md` 参数表、`docs/USAGE.md`
 6. 跑 `python3 tests/test_metadata.py --require-pillow`，确认版本三处一致
-7. 提交 PR；合入后 push tag 触发自动打标签
+7. 提交 PR；合入后在 CNB 打 Release（`release` 事件）
 8. 部署环境确认已装 `chromium` 与中文字体
+
+### 9.0 发布流水线做了什么
+
+`.cnb.yml` 的 `release` 段在 CNB 上创建 Release 时跑三段：
+
+| Stage | 做什么 |
+| --- | --- |
+| metadata 自检并准备包名 | 装依赖 → `tests/test_metadata.py --require-pillow` → 从 `metadata.yaml` 读出 `name` / `version`，拼出 `ZIP_NAME`，写进 `$CNB_ENV_FILE` 传给后面的 Stage |
+| 打包安装包 | 把仓库内容拷进 `/tmp/pkg/<name>/`，排除 `.git`、`.cnb`、`.cnb.yml`、`.gitignore`、`__pycache__`，打成 `/tmp/<name>-v<version>.zip`，然后**自校验**：包内根目录必须等于 `metadata.name`、`metadata.yaml` / `logo.png` / `main.py` / `requirements.txt` 必须在、`.git` 不许混进去 |
+| 上传为 Release 附件 | 取附件上传地址 → PUT 上传，这个附件的下载地址就是插件市场的 `download_url` |
+
+**为什么要自动化**：v0.5.3 的包是人工在本地打的，根目录写死了旧插件名，于是
+`metadata.yaml` 里的 `name` 与包内目录名分叉 —— 装上去目录叫一个名字、身份登记是
+另一个名字，最难查的一种问题。现在包名和包内根目录都从 `metadata.yaml` 现算，
+两边不可能再分叉；包一旦长歪，`release` 会在自校验那一步直接红掉，不会流出到审核侧。
+
+**为什么包名要带 `-v<version>`**：附件名固定成 `<name>-v<version>.zip`，同一插件
+多版本共存时能一眼分清；也避免了「同名附件覆盖」这种会让旧版本下载地址失效的操作。
+
+**踩过的坑**：`.cnb.yml` 的 `script` 里 `$` 是脚本插值，命令行中写 `${{...}}` 容易被
+吃掉一层，所以插值一律交给 python 读文件算。CNB 的每个 Stage 是新 shell，变量不能靠
+`export` 跨 Stage，必须写 `$CNB_ENV_FILE`。
 
 **版本号语义**：修渲染缺陷 / 加参数 → patch；加能力（如 PDF、透明） → minor；
 破坏性改指令语法 → major。
@@ -427,6 +449,32 @@ SHOT_BROWSER=$(which chromium) python3 tests/e2e_astrbot.py
 3) 一旦提交过，这个号就当作「已用掉」；要改内容就再往前加一个 patch 号
 4) 撤销发布时，删 tag / 删 Release 都不代表号可以回收，新版本一律往后递增
 ```
+
+### 9.2 插件身份纪律（比版本号更硬）
+
+**规则：`metadata.yaml` 的 `name` 一旦被平台登记过，就不要再改，也不要改回去。**
+
+AstrBot Cloud 的插件身份是 `author/name`，全局唯一、按身份记账：
+
+- **升级 `version` 不会换身份**，同一个 `name` 的新版本仍归到同一条记录
+- **改名会换身份**，拿到的是一条全新记录，老记录留在平台上
+- 老记录一旦被标记 `deleted`（下架），**这个名字就废了**：平台查不到它，但号仍被占着。
+  再用它提交，会被挡在「该插件已被作者标记为 deleted，并已从公开市场下架」这一步，
+  跟内容质量无关 —— 修代码、修 Logo、升版本号都没用
+
+本项目真实踩过：旧名字（见 CHANGELOG v0.5.4）在平台上已是 `deleted` 状态，
+连续几次上架都被它拦下，直到换成 `astrbot_plugin_web_screenshot` 才拿到可用身份。
+所以：
+
+- 锁死当前身份：`tests/test_metadata.py` 会断言 `name == astrbot_plugin_web_screenshot`，
+  并显式断言它**不等于**那个死身份
+- 仓库内除 `CHANGELOG.md` 外，任何文件都不得再出现旧标识
+  （`tests/test_docs.py` 负责拦，改名过程只记在 CHANGELOG 里）
+
+**顺带一条容易混的**：`repo`（GitHub 仓库地址）不参与插件身份判定，
+插件市场 JSON 规范写得很直白 ——「`repo` 不得用作插件身份」。
+所以仓库名 `astrbot-plugin-Screenshot` 与插件名 `astrbot_plugin_web_screenshot`
+不一致是正常的，别为了「看起来一致」去动仓库名，那会改掉所有安装源。
 
 > 真实踩过一次：上架修复先在 `metadata.yaml` 写了 `0.5.2`（尚未发布、未打 tag），
 > 随后按纪律改用 `0.5.3`，并在 `CHANGELOG.md` 里留了说明。

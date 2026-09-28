@@ -26,7 +26,7 @@ dnf install -y chromium                                # Fedora / RHEL
 
 **Q：插件加载报配置相关的错？**
 
-确认 `data/config/astrbot_plugin_screenshot_config.json` 存在（内容为 `{}` 也行）。
+确认 `data/config/astrbot_plugin_web_screenshot_config.json` 存在（内容为 `{}` 也行）。
 手搭测试环境时最容易漏这一步。
 
 **Q：需要装什么字体？**
@@ -165,5 +165,5 @@ v0.4.0 已修。若仍出现，说明站点用 JS 在滚动时重新挂载 fixed
 
 **Q：产物文件在哪里？会占满磁盘吗？**
 
-在 `data/plugin_data/astrbot_plugin_screenshot/cache`，默认最多保留 120 个文件，
+在 `data/plugin_data/astrbot_plugin_web_screenshot/cache`，默认最多保留 120 个文件，
 超出的按修改时间自动清理。插件卸载时也会清一次。

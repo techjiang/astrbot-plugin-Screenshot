@@ -89,12 +89,42 @@ for field in REQUIRED:
 
 # 目录名：本地开发时根目录可能是 workspace/仓库名，不强制等于 name；
 # 但若根目录本身形如 astrbot_plugin_xxx，则必须与 name 一致。
-EXPECTED_NAME = "astrbot_plugin_screenshot"
+EXPECTED_NAME = "astrbot_plugin_web_screenshot"
 check("name 等于约定的插件目录名", meta.get("name"), EXPECTED_NAME)
 if ROOT.name.startswith("astrbot_plugin_"):
     check("name 与所在目录名一致", meta.get("name"), ROOT.name)
 ok("name 符合插件命名规范（小写+下划线）",
    bool(re.fullmatch(r"[a-z0-9_]+", meta.get("name", ""))), meta.get("name", ""))
+
+# ---------- 1a) 插件身份：为什么名字不能改回去 ----------
+#
+# AstrBot Cloud 的插件身份是 `author/name`（author + name），全局唯一，
+# 并且按这个身份记账。改名会拿到一个全新的身份，升级版本号不会。
+# 老名字 `astrbot_plugin_screenshot` 在平台上已经「查不到、但占着号」：
+# 以它为 name 提交只会在登记阶段撞上「该插件已被标记为 deleted、已从公开市场下架」，
+# 修 logging、修 Logo、升版本号都救不回来 —— 前几次上架失败就卡在这里。
+# 所以这里把新名字钉死：谁「顺手整理命名」改回去，这条会直接失败。
+ok("name 不是已被平台标记 deleted 的旧身份 astrbot_plugin_screenshot",
+   meta.get("name") != "astrbot_plugin_screenshot",
+   "该身份在 AstrBot Cloud 上已下架且被标记 deleted，复用会直接挡在上架登记这一步；"
+   "要用新名字（当前 astrbot_plugin_web_screenshot）")
+
+# 插件市场 JSON 规范要求 author / name 非空、去除首尾空白、且不得包含 `/`，
+# 平台侧也是靠 `astrbot_plugin_` 前缀把记录认成插件包的。
+_name = meta.get("name", "")
+ok("name 以 astrbot_plugin_ 开头",
+   _name.startswith("astrbot_plugin_"), _name)
+ok("name 不含 `/`", "/" not in _name, _name)
+ok("author 不含 `/` 且非空",
+   bool(meta.get("author", "").strip()) and "/" not in meta.get("author", ""),
+   repr(meta.get("author")))
+
+# 包内根目录名就是 metadata.yaml 的 name，装上去之后插件目录也叫这个名字。
+# 两处一旦分叉，AstrBot 按目录名加载、平台按 metadata 身份记账，会出现
+# 「装上了但更新找不到、或者认成另一个插件」这种最难查的问题。
+_zip_name = f'{meta.get("name")}-v{meta.get("version")}.zip'
+ok("安装包名遵循 <name>-v<version>.zip 约定",
+   bool(re.fullmatch(r"[a-z0-9_]+-v\d+(\.\d+){1,3}\.zip", _zip_name)), _zip_name)
 
 # ---------- 2) 版本号：PEP 440，禁止 v 前缀 ----------
 
@@ -164,11 +194,14 @@ if _owner_repo:
     # 仓库名合法字符：字母数字、点、下划线、连字符，且不能以点开头/结尾
     ok("repo 仓库名合法",
        bool(re.fullmatch(r"(?![.])[\w.-]+(?<![.])", _repo_name)), _repo_name)
-    # GitHub 习惯用连字符（astrbot-plugin-Screenshot），插件目录约定用下划线
-    # （astrbot_plugin_screenshot），两者归一后应当同源。
-    ok("repo 仓库名与插件名同源（下划线⇄连字符、大小写不计）",
-       _repo_name.lower().replace("-", "_") == EXPECTED_NAME,
-       f"{_repo_name} vs {EXPECTED_NAME}")
+    # GitHub 仓库名与插件 name 是两回事，插件市场规范里 repo 明确
+    # 「不得用作插件身份」。这个仓库是历史命名（连字符 + 大写 S），
+    # 插件 name 下划线小写，两者本来就不会一致，所以这里只校验仓库名合法、
+    # 并确认它**没有**被写回插件身份 —— 真正的身份断言在上面的 1a 节。
+    ok("repo 仓库名与插件 name 不同源时也能识别（仅校验形态）",
+       bool(_repo_name), _repo_name)
+    ok("repo 未参与插件身份判定（name 与仓库名解耦）",
+       _repo_name != meta.get("name"), f"{_repo_name} vs {meta.get('name')}")
 
 # ---------- 4) AstrBot 版本约束 ----------
 
@@ -273,7 +306,7 @@ if logo_path.is_file():
 #
 # 已经用真 AstrBot 4.14.6 的 PluginManager 实测过：
 #   加根目录 logo.png 之前 -> logo_path = None
-#   加根目录 logo.png 之后 -> logo_path = .../astrbot_plugin_screenshot/logo.png
+#   加根目录 logo.png 之后 -> logo_path = .../astrbot_plugin_web_screenshot/logo.png
 #
 # 所以这里必须硬性要求根目录存在 `logo.png`，且与 `assets/logo.png` 同源同内容，
 # 避免以后有人「整理目录」把它挪回 assets/ 里，Logo 又静默消失。
